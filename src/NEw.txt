@@ -1,0 +1,2944 @@
+import React, { useState, useEffect, useRef} from 'react';
+import './App.css';
+import enemyData from './enemies/enemyData';
+import cardData from './cards/cardData';
+import { beats, calculateDamage } from './battleRules';
+import { getEnemiesForTile } from './tileEnemies'; 
+import { getRewardsForTile } from './tileRewards';
+import { AbilityTypes } from './ability/AbilityTypes';
+import './enemies/enemyAnimation.css';
+import DialogOverlay from './Dialog';
+import { useGameEvents } from './useGameEvents';
+import { handleSpecialChestFlow } from './specialChestFlow';
+import { useFirstBattleDialog } from './useFirstBattleDialog';
+import { FiSettings } from 'react-icons/fi'; 
+import { GiBackpack } from 'react-icons/gi';
+import DungeonMap from './DungeonMap';
+import { tileConnections } from './tileConnections';
+
+function App() {
+  const [playerChoice, setPlayerChoice] = useState('');
+  const [computerChoice, setComputerChoice] = useState('');
+  const [result, setResult] = useState('');
+  const [gameCount, setGameCount] = useState(0);
+  const [weirdMode, setWeirdMode] = useState(false);
+  const [chestVisible, setChestVisible] = useState(false);
+  const [showDungeon, setShowDungeon] = useState(false);
+  const [inBattle, setInBattle] = useState(false);
+  const [showRewards, setShowRewards] = useState(false);
+  const [flip, setFlip] = useState(false);
+  const [fadeDungeonOut, setFadeDungeonOut] = useState(false); // <=== new state
+  const [currentTile, setCurrentTile] = useState(12); 
+  const [lastDefeatedTile, setLastDefeatedTile] = useState(null);
+  const [initialRewardsGiven, setInitialRewardsGiven] = useState(false);
+  const [preSwitchPlayerPlayed, setPreSwitchPlayerPlayed] = useState(null);
+  const [dialogVisible, setDialogVisible] = useState(false);
+  const [dialogText, setDialogText] = useState('');
+  const [dialogName, setDialogName] = useState('');
+  const [specialChestFlow, setSpecialChestFlow] = useState(false);
+  const [specialChestStep, setSpecialChestStep] = useState(0);
+  const [specialDialogAnim, setSpecialDialogAnim] = useState(null);
+  const [playerHand, setPlayerHand] = useState(['Rock', 'Paper', 'Scissor']);
+  const [playerBackpack, setPlayerBackpack] = useState([]);
+  const [showBackpack, setShowBackpack] = useState(false);
+  const [coinCount, setCoinCount] = useState(0);
+  const [mapViewDungeon, setMapViewDungeon] = useState(Math.floor(currentTile / 5) + 1);
+  const battlesWon = JSON.parse(localStorage.getItem('battlesWon') || '{}');
+  const completedTiles = Object.keys(battlesWon).map((x) => Number(x));
+  //const completedTiles = [];
+
+  // Battle state
+  const [phase, setPhase] = useState('player'); // 'player', 'enemy', 'shoot'
+  const [playerHP, setPlayerHP] = useState(100);
+  const [maxHP, setMaxHP] = useState(100);
+  const waves = getEnemiesForTile(currentTile);
+  const [enemyWaves, setEnemyWaves] = useState(waves);
+  const [currentWaveIndex, setCurrentWaveIndex] = useState(0);
+  const [enemies, setEnemies] = useState(
+    waves[0].map(e => ({ ...e, alive: true }))
+  );
+
+  const initialEnemies = getEnemiesForTile(currentTile)[0];
+  const [enemyHPs, setEnemyHPs] = useState(
+    Array.isArray(initialEnemies)
+      ? initialEnemies.map(e => e.hp)
+      : [initialEnemies.hp]
+  );
+
+  const [playerPlayed, setPlayerPlayed] = useState([]);
+  const [enemyPlayed, setEnemyPlayed] = useState([]);
+  const [victory, setVictory] = useState(false);
+  const [shootIndex, setShootIndex] = useState(-1); // which pair is highlighted (-1 = none)
+  const [playerHighlights, setPlayerHighlights] = useState([]); // 'win', 'lose', or 'neutral'
+  const [enemyHighlights, setEnemyHighlights] = useState([]);
+  const [hoveredCardIndex, setHoveredCardIndex] = useState(null);
+  const enemyCardRefs = useRef([]);
+  const enemyImageRefs = useRef([]);
+  const [hoveredEnemyIndex, setHoveredEnemyIndex] = useState(null);
+  const [selectedSwapIndexes, setSelectedSwapIndexes] = useState([]);
+  const [switchrooUsed, setSwitchrooUsed] = useState(false);
+  const [switched, setSwitchUsed] = useState(false);
+  const [showSwitchrooMessage, setShowSwitchrooMessage] = useState(false);
+  const [battleTurn, setBattleTurn] = useState(1);
+  const [displayEnemyHPs, setDisplayEnemyHPs] = useState([...enemyHPs]);
+  const [displayPlayerHP, setDisplayPlayerHP] = useState(playerHP);
+  const [hiddenEnemies, setHiddenEnemies] = useState([]); // store indexes of fully hidden enemies
+  const [placeholderUsesThisTurn, setPlaceholderUsesThisTurn] = useState(0);
+  const [placeholderNullIndexes, setPlaceholderNullIndexes] = useState([]);
+  const [bannedCardsThisBattle, setBannedCardsThisBattle] = useState([]);
+  const [enemyMoveCooldowns, setEnemyMoveCooldowns] = useState({});
+  const [firstBattleIntroShown, setFirstBattleIntroShown] = useState(false);
+  const [firstBattleDialogStep, setFirstBattleDialogStep] = useState(0);
+  const [waveTransitioningEnemies, setWaveTransitioningEnemies] = useState([]);
+  const [speedMultiplier, setSpeedMultiplier] = useState(() => {
+    const saved = localStorage.getItem('speedMultiplier');
+    return saved ? parseFloat(saved) : 1;
+  });
+  const [showSettings, setShowSettings] = useState(false);
+  const [showKeywordTooltip, setShowKeywordTooltip] = useState(null);
+  const [switchrooActive, setSwitchrooActive] = useState(false);
+  const [boneTollPending, setBoneTollPending] = useState(false);
+  const [temporarilyExhaustedCard, setTemporarilyExhaustedCard] = useState(null);
+  const [BombSelfRemovedCards, setBombSelfRemovedCards] = useState([]);
+  const [destroyingCardIndices, setDestroyingCardIndices] = useState([]);
+  const [foreshadowing, setForeshadowing] = useState(false);
+
+function skipIntro() {
+    const rewards = getRewardsForTile(currentTile);
+
+    if (rewards.includes('Rock')) {
+      setDialogName('You');
+      setDialogText('A rock paper scissor card? Wha-');
+      setDialogVisible(true);
+      setShowRewards(true);
+    } else {
+      setShowRewards(true);
+      setSpecialChestFlow(true);
+      setSpecialChestStep(1);
+      setDialogVisible(true);
+    }
+
+      setShowRewards(true);
+}
+
+function removeLeftmostPlayerHandCard() {
+  const currentHand = [...playerHand];
+  const index = currentHand.findIndex(c => c && c !== 'Exhausted');
+
+  if (index === -1) return;
+
+  const cardToRemove = currentHand[index];
+
+  // Add to bomb list and show animation
+  setBombSelfRemovedCards(prev => [...prev, cardToRemove]);
+  setDestroyingCardIndices(prev => [...prev, index]);
+
+  // Delay actual removal
+  setTimeout(() => {
+    setPlayerHand(prev => {
+      const copy = [...prev];
+      // Make sure index is still valid and same card is there
+      if (copy[index] === cardToRemove) {
+        copy.splice(index, 1);
+      }
+      return copy;
+    });
+
+    setDestroyingCardIndices(prev => prev.filter(i => i !== index));
+  }, 300);
+}
+
+function handleCardClick(i) {
+  if (phase !== 'highlight') return;
+
+  const hasTotem = playerBackpack.includes("Severing Hand Totem");
+  const firstIndex = selectedSwapIndexes[0];
+
+  if (selectedSwapIndexes.length === 0) {
+    setSelectedSwapIndexes([i]);
+    return;
+  }
+
+  const firstCard = playerPlayed[firstIndex];
+  const secondCard = playerPlayed[i];
+
+  const canSwapWithBlank =
+    hasTotem && (
+      (firstCard != null && secondCard == null) ||
+      (firstCard == null && secondCard != null)
+    );
+
+  const isRegularSwap = firstCard != null && secondCard != null;
+
+  if (canSwapWithBlank || isRegularSwap) {
+    const newOrder = [...playerPlayed];
+    [newOrder[firstIndex], newOrder[i]] = [newOrder[i], newOrder[firstIndex]];
+    setPlayerPlayed(newOrder);
+  }
+
+  setSelectedSwapIndexes([]);
+}
+
+useGameEvents({
+  gameCount,
+  setDialogVisible,
+  setDialogText,
+  setDialogName,
+  setWeirdMode,
+  setChestVisible,
+
+  inBattle,
+  phase,
+  currentTile,
+  battleTurn,
+  firstBattleIntroShown,
+  setFadeDungeonOut,
+  setShowDungeon,
+  setSpecialChestFlow,
+  setSpecialChestStep,
+  setSpecialDialogAnim,
+  firstBattleDialogStep,
+  currentWaveIndex,
+
+  showRewards,
+  lastDefeatedTile,
+  setShowRewards,
+});
+
+const requiredCardThisTurn =
+  currentTile === 0 && !firstBattleIntroShown
+    ? battleTurn === 1
+      ? 'Rock'
+      : battleTurn === 2
+      ? 'Paper'
+      : battleTurn === 3
+      ? 'Scissor'
+      : battleTurn === 4
+      ? 'Rock'
+      : null
+    : currentTile === 1 && (battleTurn === 1 || battleTurn === 2)
+    ? 'ALL' // Use special keyword
+    : null;
+
+useEffect(() => {
+  const nextView = Math.floor(currentTile / 5) + 1;
+  setMapViewDungeon(nextView);
+}, [currentTile]);
+
+useEffect(() => {
+  localStorage.setItem('speedMultiplier', speedMultiplier);
+}, [speedMultiplier]);
+
+useEffect(() => {
+  enemies.forEach((enemy, index) => {
+    if (!enemy.alive && !hiddenEnemies.includes(index)) {
+      // Enemy just died, set timer to hide it after 1 sec
+      const timer = setTimeout(() => {
+        setHiddenEnemies(prev => [...prev, index]);
+      }, 1000);
+
+      // Clean up if enemy revived before timer ends
+      return () => clearTimeout(timer);
+    } else if (enemy.alive && hiddenEnemies.includes(index)) {
+      // Enemy revived, remove from hiddenEnemies to show immediately
+      setHiddenEnemies(prev => prev.filter(i => i !== index));
+    }
+  });
+}, [enemies, hiddenEnemies]);
+
+useEffect(() => {
+  const interval = setInterval(() => {
+    if (displayPlayerHP === playerHP) {
+      clearInterval(interval);
+      return;
+    }
+
+    setDisplayPlayerHP(prev => {
+      const diff = playerHP - prev;
+      const step = Math.sign(diff) * Math.ceil(Math.abs(diff) / 5);
+      const newHP = prev + step;
+
+      if ((step > 0 && newHP > playerHP) || (step < 0 && newHP < playerHP)) {
+        return playerHP;
+      }
+
+      return newHP;
+    });
+  }, 50);
+
+  return () => clearInterval(interval);
+}, [playerHP]);
+
+useEffect(() => {
+  const interval = setInterval(() => {
+    setDisplayEnemyHPs(prev =>
+      prev.map((hp, i) => {
+        if (hp === enemyHPs[i]) return hp;
+
+        const diff = enemyHPs[i] - hp;
+        const step = Math.sign(diff) * Math.ceil(Math.abs(diff) / 5); // decrease/increase in steps of ~2
+
+        const newHP = hp + step;
+
+        // Clamp
+        if ((step > 0 && newHP > enemyHPs[i]) || (step < 0 && newHP < enemyHPs[i])) {
+          return enemyHPs[i];
+        }
+
+        return newHP;
+      })
+    );
+  }, 50); // Adjust timing for smoother/slower animation
+
+  return () => clearInterval(interval);
+}, [enemyHPs]);
+
+useEffect(() => {
+  if (!enemyImageRefs.current) return;
+
+  const intervals = enemyImageRefs.current.map((el) => {
+    if (!el) return null;
+
+    function flipCycle() {
+      // Flip left instantly
+      el.classList.add('enemyFlip');
+
+      // Stay flipped for random time between 1-5 sec
+      const flipDuration = Math.random() * 4000 + 1000;
+
+      setTimeout(() => {
+        // Flip back right instantly
+        el.classList.remove('enemyFlip');
+      }, flipDuration);
+    }
+
+    // Initial flip cycle
+    flipCycle();
+
+    // Repeat flipping on random intervals between 6-10 seconds
+    const flipInterval = setInterval(() => {
+      flipCycle();
+    }, Math.random() * 4000 + 15000);
+
+    return flipInterval;
+  });
+
+  return () => {
+    intervals.forEach(interval => {
+      if (interval) clearInterval(interval);
+    });
+  };
+}, [enemies]);
+
+useEffect(() => {
+  if (phase === 'highlight' && playerPlayed.includes('Scroll of Switchroo') && !switched) {
+    setSwitchUsed(true); 
+
+    const timer = setTimeout(() => {
+      const indexes = playerPlayed
+        .map((card, idx) => (card !== 'Scroll of Switchroo' ? idx : null))
+        .filter(idx => idx !== null);
+
+      if (indexes.length >= 2) {
+        let a, b;
+        do {
+          a = indexes[Math.floor(Math.random() * indexes.length)];
+          b = indexes[Math.floor(Math.random() * indexes.length)];
+        } while (a === b);
+
+        setPreSwitchPlayerPlayed([...playerPlayed]);
+
+        const newOrder = [...playerPlayed];
+        [newOrder[a], newOrder[b]] = [newOrder[b], newOrder[a]];
+
+        setPlayerPlayed(newOrder);
+        setShowSwitchrooMessage(false);
+        setSelectedSwapIndexes([]);
+      }
+    }, 1);
+
+    return () => clearTimeout(timer);
+  }
+}, [phase, switchrooUsed]);
+
+
+useEffect(() => {
+  if (!initialRewardsGiven && inBattle) {
+    const rewards = [];
+
+  const allRewardTiles = [
+    0, 1, 2, 3, 4, 5, 6, 6.1, 6.2, 7, 7.1, 7.2, 8, 9, 10, 11, 11.1, 11.2, 11.3
+  ];
+
+    for (const tile of allRewardTiles) {
+      if (tile >= currentTile) break;
+
+    getRewardsForTile(tile)?.forEach(item => {
+      if (!rewards.includes(item)) {
+        rewards.push(item);
+      }
+    });
+  }
+
+    const newRewards = rewards.filter(
+      item => !playerHand.includes(item) && cardData[item]?.type !== 'item'
+    );
+    
+    setPlayerHand(prev =>
+      prev.filter(card => cardData[card]?.type !== 'item')
+    );
+
+    if (newRewards.length > 0) {
+      setPlayerHand(prev => [...prev, ...newRewards]);
+    }
+    
+    // Backpack items and Coins for earlier tiles
+    let backpackItems = [];
+    let coinSum = 0;
+
+    rewards.forEach(item => {
+      const data = cardData[item];
+      if (!data || data.type !== 'item') return;
+
+      if (data.coins) {
+        coinSum += data.coins;
+      } else if (!playerBackpack.includes(item)) {
+        backpackItems.push(item);
+      }
+
+      if (data.maxHpBoost) {
+        setMaxHP(prev => prev + data.maxHpBoost); 
+        setPlayerHP(prev => prev + data.maxHpBoost); 
+        setDisplayPlayerHP(prev => prev + data.maxHpBoost);
+      }
+
+    });
+
+    if (backpackItems.length > 0) {
+      setPlayerBackpack(prev => [...prev, ...backpackItems]);
+    }
+    if (coinSum > 0) {
+      setCoinCount(prev => prev + coinSum);
+    }
+
+    setInitialRewardsGiven(true);
+  }
+}, [inBattle, currentTile, playerHand, initialRewardsGiven]);
+
+
+useEffect(() => {
+  if (phase === 'highlight' && playerPlayed.includes('Scroll of Switchroo') && !switchrooUsed && !preSwitchPlayerPlayed) {
+    setPreSwitchPlayerPlayed([...playerPlayed]);
+    setShowSwitchrooMessage(false);
+  }
+}, [phase, playerPlayed, switchrooUsed, preSwitchPlayerPlayed]);
+
+
+useEffect(() => {
+  if (inBattle && battleTurn === 1 && currentWaveIndex === 0 && enemies.length === 0) {
+    const waves = getEnemiesForTile(currentTile);
+    setEnemyWaves(waves);
+
+    const firstWave = waves[0].map(e => ({ ...e, alive: true }));
+    setEnemies(firstWave);
+    setEnemyHPs(firstWave.map(e => e.hp));
+    setDisplayEnemyHPs(firstWave.map(e => e.hp));
+    setVictory(false);
+    setPlayerHand(prev => prev.filter(card => cardData[card]?.type !== 'item'));
+    setPhase('player');
+    setPlayerHP(100);
+    setPlayerPlayed([]);
+    setEnemyPlayed([]);
+    setBattleTurn(1);
+  }
+}, [inBattle, currentTile]);
+
+
+useEffect(() => {
+  if (phase === 'player') {
+
+    if (temporarilyExhaustedCard && playerHand.includes('Exhausted')) {
+      setPlayerHand(prev =>
+        prev.map(card => (card === 'Exhausted' ? temporarilyExhaustedCard : card))
+      );
+      setTemporarilyExhaustedCard(null);
+    }
+    if (boneTollPending && playerHand.length > 0) {
+      const nonItemCards = playerHand.filter(card => card && cardData[card]?.type !== 'item');
+      if (nonItemCards.length > 0) {
+        const toExhaust = nonItemCards[nonItemCards.length - 1];
+        setTemporarilyExhaustedCard(toExhaust);
+        setPlayerHand(prev =>
+          prev.map(card => (card === toExhaust ? 'Exhausted' : card))
+        );
+      }
+      setBoneTollPending(false);
+    }
+
+    setPlayerHighlights([]);
+    setEnemyHighlights([]);
+    setShootIndex(-1);
+    setSwitchrooUsed(false);
+    setSwitchrooActive(false);
+    setSwitchUsed(false);
+    setPlaceholderUsesThisTurn(0);
+    setPlaceholderNullIndexes([]);
+  }
+}, [phase]);
+
+
+useEffect(() => {
+let currentEnemyHPs = [...enemyHPs];
+let currentPlayerHP = playerHP;
+const baseSpeed = 1200;
+const intervalTime = Math.floor(baseSpeed / speedMultiplier);
+
+if (phase === 'shoot') {
+  setShootIndex(-1);
+  setPlayerHighlights([]);
+  setEnemyHighlights([]);
+  
+  let i = 0;
+  let bannedThisRound = new Set();
+
+  const interval = setInterval(() => {
+    let newEnemies = [...enemies];
+  
+    if (i >= Math.max(playerPlayed.length, enemyPlayed.length)) {
+      clearInterval(interval);
+      
+      setEnemyHPs(currentEnemyHPs);
+      setPlayerHP(currentPlayerHP);
+      setEnemies(newEnemies);
+      setDisplayEnemyHPs([...currentEnemyHPs]);
+      setBannedCardsThisBattle(prev => [...new Set([...prev, ...bannedThisRound])]); // <-- MOVE IT HERE
+
+      console.table(enemies.map((enemy, index) => ({
+        Index: index,
+        Name: enemy.name,
+        HP: enemyHPs[index],
+        Alive: enemy.alive,
+        Immortal: enemy.isImmortal || false,
+        ImmortalTurnsLeft: enemy.immortalTurnsLeft ?? '',
+})));
+
+      /*
+    newEnemies.forEach((enemy, index) => {
+      if (currentEnemyHPs[index] <= 0) {
+        enemy.alive = false;
+      }
+    });
+    setEnemies(newEnemies); // ✅ update enemy objects with .alive = false
+
+    */
+
+  const nextWaveIndex = currentWaveIndex + 1;
+  console.log(nextWaveIndex);
+  console.log(enemyWaves.length);
+  if (currentEnemyHPs.every(hp => hp <= 0)) {
+
+  if (nextWaveIndex < enemyWaves.length) {
+    // Next wave!
+    const nextWave = enemyWaves[nextWaveIndex].map(e => ({ ...e, alive: true }));
+    setEnemies(nextWave);
+    setWaveTransitioningEnemies(nextWave.map((_, i) => i)); // All new enemy indexes
+    setTimeout(() => setWaveTransitioningEnemies([]), 1000); // Clear after animation
+    setEnemyHPs(nextWave.map(e => e.hp));
+    setDisplayEnemyHPs(nextWave.map(e => e.hp));
+    setCurrentWaveIndex(nextWaveIndex);
+    setPlayerPlayed([]);
+    setEnemyPlayed([]);
+    setBattleTurn(1);
+    setPhase('player');
+    return;
+  } else {
+    // All waves defeated — true victory
+    setVictory(true);
+    setLastDefeatedTile(currentTile);
+
+    battlesWon[currentTile] = true;
+    localStorage.setItem('battlesWon', JSON.stringify(battlesWon));
+
+    setTimeout(() => {
+      setInBattle(false);
+      setShowDungeon(true);
+      resetBattle();
+
+    const nextTiles = tileConnections[currentTile];
+
+    if (Array.isArray(nextTiles)) {
+      if (nextTiles.length === 1 && nextTiles[0] === 'none') {
+        // Explicitly do nothing
+        // Player will remain on current tile and must choose from map
+      } else {
+        const uncompletedNextTiles = nextTiles.filter(tile => !completedTiles.includes(tile));
+
+        if (uncompletedNextTiles.length === 1) {
+          setCurrentTile(uncompletedNextTiles[0]);
+        }
+        // If multiple next options or all completed, stay put
+      }
+    } else {
+      // No entry in tileConnections — fallback to tile + 1
+      setCurrentTile(prev => Math.min(prev + 1, 99));
+    }
+
+      setShowRewards(true);
+    }, 2000);
+
+    return;
+  }
+}
+    setPlayerPlayed([]);
+    setEnemyPlayed([]);
+    setBattleTurn(prev => prev + 1);
+    setEnemies(prev =>
+      prev.map((e, i) => {
+        if (e.immortalTurnsLeft !== undefined) {
+          const turnsLeft = e.immortalTurnsLeft - 1;
+          return {
+            ...e,
+            immortalTurnsLeft: turnsLeft > 0 ? turnsLeft : undefined,
+            isImmortal: turnsLeft > 0,
+          };
+        }
+        return e;
+      })
+    );
+
+    setPhase('player');
+    return;
+}
+
+    // increment i first
+    i++;
+
+    setShootIndex(i - 1);
+
+    let p = playerPlayed[i - 1];
+    const eObj = enemyPlayed[i - 1];
+    const e = eObj?.type;
+    const moveId = eObj?.id;
+
+    console.log(`Comparing at slot ${i - 1}: Player = ${p}, Enemy = ${e}`);
+    //console.log("Player cards in order:", playerPlayed.map((c, i) => `Slot ${i}: ${c?.name || 'null'}`).join(' | '));
+
+    // Handle SwapEnemy type (enemy affecting player's cards)
+    if (Array.isArray(e) && e.includes('SwapEnemy')) {
+      const enemyIndex = eObj.enemyIndex;
+      const enemy = enemies[enemyIndex];
+      const move = enemy?.moves.find(m => (m.id || m.name) === moveId);
+
+      let updatedPlayerPlayed = [...playerPlayed];
+      console.log("Updated playerPlayed:", updatedPlayerPlayed);
+
+      if (move?.swap === 'LR' && updatedPlayerPlayed.length >= 2) {
+        const leftIndex = 0;
+        const rightIndex = updatedPlayerPlayed.length - 1;
+
+        // Swap
+        [updatedPlayerPlayed[leftIndex], updatedPlayerPlayed[rightIndex]] =
+          [updatedPlayerPlayed[rightIndex], updatedPlayerPlayed[leftIndex]];
+
+        setPlayerPlayed(updatedPlayerPlayed);
+      }
+
+      /*
+      // New SwapEnemy logic for "Rupture the Lines"
+      if (move?.swap === 'LR_B_R_H50') {
+        const leftIndex = 0;
+        const rightIndex = playerPlayed.length - 1;
+
+        let newOrder = [...playerPlayed];
+        let healAmount = 0;
+
+        const leftCard = playerPlayed[leftIndex];
+        const rightCard = playerPlayed[rightIndex];
+
+        if (leftCard) {
+          if (cardData[leftCard]?.type?.includes('Rock')) {
+            healAmount += 50;
+          }
+          newOrder[leftIndex] = null;
+        }
+
+        if (rightIndex !== leftIndex && rightCard) {
+          if (cardData[rightCard]?.type?.includes('Rock')) {
+            healAmount += 50;
+          }
+          newOrder[rightIndex] = null;
+        }
+
+        setPlayerPlayed(newOrder);
+
+        const enemyIndex = eObj.enemyIndex;
+        currentEnemyHPs[enemyIndex] = Math.min(
+          enemies[enemyIndex].hp,
+          currentEnemyHPs[enemyIndex] + healAmount
+        );
+
+        const el = enemyImageRefs.current[enemyIndex];
+        if (el && healAmount > 0) {
+          el.classList.remove('enemy-heal');
+          void el.offsetWidth;
+          el.classList.add('enemy-heal');
+        }
+      }
+
+      if (move?.swap === 'LR_B_R_H') {
+        const leftIndex = 0;
+        const rightIndex = playerPlayed.length - 1;
+
+        const newOrder = [...playerPlayed];
+        if (newOrder[leftIndex]) newOrder[leftIndex] = null;
+        if (rightIndex !== leftIndex && newOrder[rightIndex]) newOrder[rightIndex] = null;
+
+        setPlayerPlayed(newOrder);
+      }
+      */
+    p = updatedPlayerPlayed[i - 1];
+    console.log("Updated playerPlayed AFTER SWAP:", updatedPlayerPlayed);
+    }
+
+    console.log(`Comparing at slot AFTER SWAP ${i - 1}: Player = ${p}, Enemy = ${e}`);
+    //console.log("Player cards in order AFTER SWAP:", playerPlayed.map((c, i) => `Slot ${i}: ${c?.name || 'null'}`).join(' | '));
+
+    // Skip entirely if the enemy move is BLANK
+    if (e === 'BLANK') {
+      const p = playerPlayed[i - 1];
+      let pResult = 'neutral';
+      let eResult = 'neutral';
+
+      if (p) {
+        const playerMove = cardData[p];
+
+        // Activate the move with no target
+        /*
+        calculateDamage(p, null, playerMove, {
+          // No defenderEnemy provided
+        });
+        */
+        // You could trigger any side effects here manually if needed
+
+        pResult = 'win';
+        eResult = 'lose';
+      }
+
+      setPlayerHighlights(prev => {
+        const updated = [...prev];
+        updated[i - 1] = pResult;
+        return updated;
+      });
+
+      setEnemyHighlights(prev => {
+        const updated = [...prev];
+        updated[i - 1] = eResult;
+        return updated;
+      });
+
+      // Don't touch HPs at all
+      //i++;
+      return;
+    }
+
+
+    let pResult = 'neutral';
+    let eResult = 'neutral';
+
+    let dmgToEnemy = 0;
+    let dmgToPlayer = 0;
+
+  if (e) {
+    
+  const enemy = enemies[eObj.enemyIndex];
+  const enemyMove = enemy?.moves.find(m => (m.id || m.name) === moveId);
+  
+    if (Array.isArray(e) && e.includes('DamageAlliesHeal')) {
+    const casterIndex = eObj.enemyIndex;
+    let healedAmount = 0;
+
+    enemies.forEach((ally, i) => {
+      if (i !== casterIndex && ally.alive) {
+        currentEnemyHPs[i] = Math.max(0, currentEnemyHPs[i] - 20);
+
+        // Trigger animation
+        const el = enemyImageRefs.current[i];
+        if (el) {
+          el.classList.remove('enemy-hit');
+          void el.offsetWidth;
+          el.classList.add('enemy-hit');
+        }
+
+        healedAmount += 20;
+      }
+    });
+
+  let bombSelfCount = 0;
+
+  enemies.forEach((enemy, i) => {
+    console.log(`Checking enemy ${i}:`, enemy);
+
+    if (i !== casterIndex && currentEnemyHPs[i] === 0 && enemy.alive !== false) {
+      newEnemies[i].alive = false;
+
+      if (enemy.death === 'bombSelf') {
+        bombSelfCount++;
+        console.log(`BombSelf triggered by enemy ${i}`);
+      }
+
+      // Remove future moves
+      for (let j = i; j < enemyPlayed.length; j++) {
+        if (enemyPlayed[j]?.enemyIndex === i) {
+          enemyPlayed[j] = { type: 'BLANK', enemyIndex: -1 };
+        }
+      }
+    }
+  });
+
+  for (let i = 0; i < bombSelfCount; i++) {
+    setPlayerHand(prev => {
+      const copy = [...prev];
+      const index = copy.findIndex(c => c && c !== 'Exhausted');
+
+      if (index !== -1) {
+        const [removed] = copy.splice(index, 1);
+        setBombSelfRemovedCards(prevRemoved => [...prevRemoved, removed]);
+      }
+
+      return copy;
+    });
+  }
+
+    // Heal the caster
+    currentEnemyHPs[casterIndex] = Math.min(
+      enemies[casterIndex].hp,
+      currentEnemyHPs[casterIndex] + healedAmount
+    );
+
+    // Healing animation
+    const casterEl = enemyImageRefs.current[casterIndex];
+    if (casterEl) {
+      casterEl.classList.remove('enemy-heal');
+      void casterEl.offsetWidth;
+      casterEl.classList.add('enemy-heal');
+    }
+  }
+
+if ((Array.isArray(e) && e.includes('Immortal1')) || e === 'Immortal1') {
+  const enemyIndex = eObj.enemyIndex;
+  if (enemyIndex !== undefined && enemyIndex !== -1) {
+    console.log(`Enemy ${enemies[enemyIndex].name} activated Immortal1`);
+    enemies[enemyIndex].isImmortal = true;
+    enemies[enemyIndex].immortalTurnsLeft = 2;
+    newEnemies[enemyIndex] = { ...enemies[enemyIndex] };
+  }
+}
+
+  if (enemyMove?.damageSelf) {
+    if (!enemies[eObj.enemyIndex]?.isImmortal) {
+      currentEnemyHPs[eObj.enemyIndex] = Math.max(
+        0,
+        currentEnemyHPs[eObj.enemyIndex] - enemyMove.damageSelf
+      );
+    }
+
+    if (currentEnemyHPs[eObj.enemyIndex] === 0) {
+      newEnemies[eObj.enemyIndex].alive = false;
+
+      for (let j = i; j < enemyPlayed.length; j++) {
+        if (enemyPlayed[j]?.enemyIndex === eObj.enemyIndex) {
+          enemyPlayed[j] = { type: 'Undamageable', enemyIndex: -1 };
+        }
+      }
+    }
+  }
+
+  const isHealing = enemyMove?.type?.includes("Heal");
+
+  if (isHealing && enemyMove?.heal) {
+    const healAmount = Math.abs(enemyMove?.damage || 0);
+    const healerIndex = eObj.enemyIndex;
+
+    let targets = [];
+
+    switch (enemyMove.heal) {
+      case 'self':
+        targets = [healerIndex];
+        break;
+      case 'right':
+        targets = enemies
+          .map((_, i) => i)
+          .filter(i => i > healerIndex && enemies[i]?.alive);
+        break;
+      case 'left':
+        targets = enemies
+          .map((_, i) => i)
+          .filter(i => i < healerIndex && enemies[i]?.alive);
+        break;
+      case 'rightSelf':
+        targets = enemies
+          .map((_, i) => i)
+          .filter(i => i >= healerIndex && enemies[i]?.alive);
+        break;
+      case 'leftSelf':
+        targets = enemies
+          .map((_, i) => i)
+          .filter(i => i <= healerIndex && enemies[i]?.alive);
+        break;
+      default:
+        targets = [healerIndex]; // fallback
+    }
+
+    for (const target of targets) {
+      currentEnemyHPs[target] = Math.min(
+        enemies[target].hp,
+        currentEnemyHPs[target] + healAmount
+      );
+
+      // Trigger healing animation
+      const el = enemyImageRefs.current[target];
+      if (el) {
+        el.classList.remove('enemy-heal'); // reset
+        void el.offsetWidth; // force reflow
+        el.classList.add('enemy-heal');
+      }
+    }
+  }
+
+if (Array.isArray(e) && e.includes('Summon')) {
+  const summonerIndex = eObj.enemyIndex;
+  const summoner = enemies[summonerIndex];
+  const move = summoner?.moves.find(m => Array.isArray(m.type) && m.type.includes('Summon'));
+
+  if (move?.summons) {
+    const newEnemies = [...enemies];
+    const newEnemyHPs = [...currentEnemyHPs];
+
+    const newClones = [];
+    const newClonesHPs = [];
+
+    for (const [enemyKey, count] of move.summons) {
+      const template = enemyData[enemyKey];
+      if (!template) {
+        console.warn(`Missing enemy template: "${enemyKey}"`);
+        continue;
+      }
+      if (typeof template.hp !== 'number' || isNaN(template.hp)) {
+        console.warn(`Invalid or missing HP on enemy "${enemyKey}" →`, template.hp);
+        continue;
+      }
+
+      for (let i = 0; i < count; i++) {
+        const clone = {
+          ...JSON.parse(JSON.stringify(template)),
+          alive: true,
+        };
+        newClones.push(clone);
+        newClonesHPs.push(clone.hp);
+      }
+    }
+    
+    for (let k = 0; k < newClones.length; k++) {
+      const clone = newClones[k];
+      const hp = newClonesHPs[k];
+      enemies.push(clone); // ⬅ add directly to in-loop `enemies`
+      currentEnemyHPs.push(hp); // ⬅ extend current HPs immediately
+      newEnemies.push(clone); // to preserve for state update
+    }
+    setDisplayEnemyHPs([...currentEnemyHPs]);
+
+    /*
+    setEnemies(prev => {
+      const newArr = [...prev];
+      newArr.push(...newClones);
+      return newArr;
+    });
+
+    currentEnemyHPs.push(...newClonesHPs);
+    setEnemyHPs([...currentEnemyHPs]);
+    setDisplayEnemyHPs([...currentEnemyHPs]);
+    */
+
+    // Damage the summoner if applicable
+    if (typeof move.damage === 'number') {
+      newEnemyHPs[summonerIndex] = Math.max(0, newEnemyHPs[summonerIndex] - move.damage);
+
+      if (newEnemyHPs[summonerIndex] === 0) {
+        newEnemies[summonerIndex].alive = false;
+        for (let j = i; j < enemyPlayed.length; j++) {
+          if (enemyPlayed[j]?.enemyIndex === summonerIndex) {
+            enemyPlayed[j] = { type: 'BLANK', enemyIndex: -1 };
+          }
+        }
+      }
+    }
+
+  }
+}
+
+  /*
+  // ⚔️ Otherwise proceed to regular damage calc
+  if (!p) {
+    // enemy attacking alone
+    currentPlayerHP = Math.max(0, currentPlayerHP - (enemyMove?.damage || 0));
+  } else if (beats(e, p)) {
+    currentPlayerHP = Math.max(0, currentPlayerHP - (enemyMove?.damage || 0));
+  }
+    */
+  }
+  
+  if (p === 'Hide' || e === 'Hide') {
+  // nothing happens
+  } else {
+  if (p && !e) {
+  const playerMove = cardData[p];
+
+  // Target first alive enemy (as before)
+  // Find first alive enemy
+  let autoTargetIndex = (
+    eObj?.enemyIndex !== undefined &&
+    eObj.enemyIndex >= 0 &&
+    currentEnemyHPs[eObj.enemyIndex] > 0
+  )
+    ? eObj.enemyIndex
+    : currentEnemyHPs.findIndex(hp => hp > 0);
+
+  let trueTargetIndex = autoTargetIndex;
+
+  const allTanks = enemies
+    .map((e, idx) => ({ e, idx }))
+    .filter(({ e }) => e?.alive && ['vanguard', 'vanguardNext'].includes(e.onBoard));
+
+  const nearbyTanks = allTanks.filter(({ e, idx }) => {
+    if (e.onBoard === 'vanguard') return true;
+    if (e.onBoard === 'vanguardNext') {
+      return Math.abs(idx - autoTargetIndex) === 1; // Only adjacent
+    }
+    return false;
+  });
+
+  if (nearbyTanks.length > 0 && autoTargetIndex !== -1) {
+    const leftmost = nearbyTanks.reduce((min, curr) => (curr.idx < min.idx ? curr : min));
+    trueTargetIndex = leftmost.idx;
+  }
+
+  if (trueTargetIndex !== -1) {
+    const defenderEnemy = enemies[trueTargetIndex];
+
+    dmgToEnemy = calculateDamage(p, null, playerMove, {
+      defenderEnemy
+    });
+
+    if (defenderEnemy?.isImmortal) {
+        dmgToEnemy = 0;
+      }
+
+      if (!enemies[trueTargetIndex]?.isImmortal) {
+        currentEnemyHPs[trueTargetIndex] = Math.max(
+          0,
+          currentEnemyHPs[trueTargetIndex] - dmgToEnemy
+        );
+      } else {
+        dmgToEnemy = 0;
+      }
+
+    // Hit animation (same as before)
+    const enemyEl = enemyImageRefs.current[trueTargetIndex];
+    if (enemyEl) {
+      enemyEl.classList.remove('enemy-hit');
+      void enemyEl.offsetWidth;
+      enemyEl.classList.add('enemy-hit');
+    }
+
+    // Mark as dead if needed
+    if (currentEnemyHPs[trueTargetIndex] === 0) {
+      newEnemies[trueTargetIndex].alive = false;
+
+      const killedEnemy = enemies[trueTargetIndex];
+      if (killedEnemy.death === 'bomb' && p) {
+        bannedThisRound.add(p);
+      }
+
+      if (killedEnemy.death === 'bombSelf') {
+        console.log("Bomb");
+        removeLeftmostPlayerHandCard();
+      }
+
+      for (let j = i; j < enemyPlayed.length; j++) {
+        if (enemyPlayed[j]?.enemyIndex === trueTargetIndex) {
+          enemyPlayed[j] = { type: 'BLANK', enemyIndex: -1 };
+        }
+      }
+    }
+    
+  }
+  } else if (p && e) {
+  const playerMove = cardData[p];
+  const enemyIndex = eObj.enemyIndex;
+
+  dmgToEnemy = calculateDamage(p, e, playerMove, {
+    defenderEnemy: enemies[enemyIndex],
+  });
+
+    if (enemies[enemyIndex]?.isImmortal) {
+    dmgToEnemy = 0;
+  }
+
+    if (enemyIndex !== undefined && enemyIndex !== -1) {
+      // Check for damage redirect (vanguard)
+      let trueTargetIndex = enemyIndex;
+
+      // Gather tank candidates
+      const allTanks = enemies
+        .map((e, idx) => ({ e, idx }))
+        .filter(({ e }) => e?.alive && ['vanguard', 'vanguardNext'].includes(e.onBoard));
+
+      // Find valid tanks based on range
+      const nearbyTanks = allTanks.filter(({ e, idx }) => {
+        if (e.onBoard === 'vanguard') return true;
+        if (e.onBoard === 'vanguardNext') {
+          return Math.abs(idx - enemyIndex) === 1; // Only adjacent
+        }
+        return false;
+      });
+
+      // Redirect to leftmost valid tank
+      if (nearbyTanks.length > 0 && enemyIndex !== -1) {
+        const leftmost = nearbyTanks.reduce((min, curr) => (curr.idx < min.idx ? curr : min));
+        trueTargetIndex = leftmost.idx;
+      }
+
+      console.log(!enemies[trueTargetIndex]?.isImmortal);
+      
+      if (!enemies[trueTargetIndex]?.isImmortal) {
+        currentEnemyHPs[trueTargetIndex] = Math.max(
+          0,
+          currentEnemyHPs[trueTargetIndex] - dmgToEnemy
+        );
+      } else {
+        dmgToEnemy = 0;
+      }
+
+    // Animation (only on real target)
+    if (beats(cardData[p]?.type || [], enemies[enemyIndex]?.moves.find(m => m.type === e)?.type || [])) {
+      const enemyEl = enemyImageRefs.current[trueTargetIndex];
+      if (enemyEl) {
+        enemyEl.classList.remove('enemy-hit');
+        void enemyEl.offsetWidth;
+        enemyEl.classList.add('enemy-hit');
+      }
+    }
+
+    // Death check (on true target)
+    if (currentEnemyHPs[trueTargetIndex] === 0) {
+      newEnemies[trueTargetIndex].alive = false;
+
+      const killedEnemy = enemies[trueTargetIndex];
+      if (killedEnemy.death === 'bomb' && p) {
+        bannedThisRound.add(p);
+      }
+
+      if (killedEnemy.death === 'bombSelf' && p) {
+        console.log("Bomb2");
+        removeLeftmostPlayerHandCard();
+      }
+
+      for (let j = i; j < enemyPlayed.length; j++) {
+        if (enemyPlayed[j]?.enemyIndex === trueTargetIndex) {
+          enemyPlayed[j] = { type: 'BLANK', enemyIndex: -1 };
+        }
+      }
+    }
+
+    // Only show animation if the player's move beats the enemy's
+    if (beats(cardData[p]?.type || [], enemies[enemyIndex]?.moves.find(m => m.type === e)?.type || [])) {
+      const enemyEl = enemyImageRefs.current[enemyIndex];
+      if (enemyEl) {
+        enemyEl.classList.remove('enemy-hit');
+        void enemyEl.offsetWidth;
+        enemyEl.classList.add('enemy-hit');
+      }
+    }
+  }
+
+} if (e && !p) {
+    // Enemy attacks alone
+    const enemy = enemies[eObj.enemyIndex];
+    const enemyMove = enemy?.moves.find(m => (m.id || m.name) === moveId);
+    let otherEnemyAttacks = enemyPlayed.filter((play, idx) => {
+      return play.enemyIndex !== eObj.enemyIndex && play.type && play.type !== 'Hide';
+    }).length;
+
+    const fairyBuffCount = enemies.filter(e => e.alive && e.onBoard === 'fairyBuff').length;
+
+    let modifiedEnemyMove = { ...enemyMove };
+    if (fairyBuffCount && typeof modifiedEnemyMove.damage === 'number') {
+      modifiedEnemyMove = {
+        ...modifiedEnemyMove,
+        damage: modifiedEnemyMove.damage + 10 * fairyBuffCount,
+      };
+    }
+
+    const dmgToPlayer = calculateDamage(
+      e,
+      p,
+      modifiedEnemyMove,
+      { otherEnemyAttacks,
+        defenderCardData: cardData[p], 
+      }, 
+    );
+
+    currentPlayerHP = Math.max(0, currentPlayerHP - dmgToPlayer);
+  } 
+  else if (e && p) {
+    if (beats(e, p)) {
+      // Enemy wins
+      const enemy = enemies[eObj.enemyIndex];
+      const enemyMove = enemy?.moves.find(m => (m.id || m.name) === moveId);
+
+      let otherEnemyAttacks = enemyPlayed.filter((play, idx) => {
+        return play.enemyIndex !== eObj.enemyIndex && play.type && play.type !== 'Hide';
+      }).length;
+
+    const fairyBuffCount = enemies.filter(e => e.alive && e.onBoard === 'fairyBuff').length;
+
+    let modifiedEnemyMove = { ...enemyMove };
+
+    if (fairyBuffCount && typeof modifiedEnemyMove.damage === 'number') {
+      modifiedEnemyMove = {
+        ...modifiedEnemyMove,
+        damage: modifiedEnemyMove.damage + 10 * fairyBuffCount,
+      };
+    }
+
+    const dmgToPlayer = calculateDamage(
+      e,
+      p,
+      modifiedEnemyMove,
+      { otherEnemyAttacks,
+        defenderCardData: cardData[p], 
+      }, 
+    );
+
+      currentPlayerHP = Math.max(0, currentPlayerHP - dmgToPlayer);
+    }
+  }
+
+  // Determine win/lose/neutral:
+
+  if (!p && !e) {
+    pResult = 'neutral';
+    eResult = 'neutral';
+  } else if (p && !e) {
+    pResult = 'win';
+    eResult = 'lose';
+  } else if (!p && e) {
+    pResult = 'lose';
+    eResult = 'win';
+  } else {
+    const playerTypes = cardData[p]?.type || [];
+    const enemyMove = enemies[eObj.enemyIndex]?.moves.find(m => m.type === e);
+    const enemyTypes = enemyMove?.type || e || [];
+
+const fairySwitchActive = enemies.some(e => e.alive && e.onBoard === 'fairySwitch');
+const playerWins = beats(playerTypes, enemyTypes);
+const enemyWins = beats(enemyTypes, playerTypes);
+
+if (!fairySwitchActive) {
+  if (playerWins) {
+    pResult = 'win';
+    eResult = 'lose';
+  } else if (enemyWins) {
+    pResult = 'lose';
+    eResult = 'win';
+  } else {
+    pResult = 'neutral';
+    eResult = 'neutral';
+  }
+} else {
+  // Reverse logic
+  if (playerWins) {
+    pResult = 'lose';
+    eResult = 'win';
+  } else if (enemyWins) {
+    pResult = 'win';
+    eResult = 'lose';
+  } else {
+    pResult = 'neutral';
+    eResult = 'neutral';
+  }
+}
+
+  }
+  }
+
+    setPlayerHighlights(prev => {
+      const updated = [...prev];
+      updated[i - 1] = pResult;
+      return updated;
+    });
+    setEnemyHighlights(prev => {
+      const updated = [...prev];
+      updated[i - 1] = eResult;
+      return updated;
+    });
+
+
+    setEnemyHPs([...currentEnemyHPs]);
+    setPlayerHP(currentPlayerHP);
+
+  }, intervalTime);
+
+  // Bone Toll: Check if it should trigger next turn
+  const boneTollWasPlayed = enemyPlayed.some((play) => {
+    const move = enemies[play.enemyIndex]?.moves.find(m => (m.id || m.name) === play.id);
+    return move?.name === 'Bone Toll';
+  });
+
+  if (boneTollWasPlayed) {
+    const numAttackCards = playerPlayed.filter(card => cardData[card]?.type?.includes('Weapon')).length;
+    if (numAttackCards >= 2) {
+      setBoneTollPending(true);
+    }
+  }
+
+    return () => clearInterval(interval);
+
+  }
+}, [phase]);
+
+// Enemy chooses move during 'enemy' phase
+useEffect(() => {
+  if (phase === 'enemy') {
+    const aliveEnemies = enemies.filter(e => e.alive);
+    const enemyPlays = [];
+
+    let updatedCooldowns = { ...enemyMoveCooldowns }; 
+
+  aliveEnemies.forEach((enemy, enemyIndexInAliveList) => {
+  const realEnemyIndex = enemies.findIndex(e => e === enemy);
+  const currentHP = enemyHPs[realEnemyIndex];
+  const enemyCooldownMeta = enemy.cooldownMeta || {};
+  
+  let baseMoves = enemy.moves;
+  let newMovePoolKey = 'moves';
+  let bestKey = null;
+  let bestThreshold = Infinity;
+
+  const moveKeys = Object.keys(enemy)
+    .filter(k => /^moves\d+$/.test(k))
+    .map(k => ({ key: k, threshold: parseInt(k.slice(5)) }))
+    .sort((a, b) => a.threshold - b.threshold);
+
+  if (!enemy.phaseState) enemy.phaseState = { phaseKey: null };
+
+  for (const { key, threshold } of moveKeys) {
+    if (currentHP <= threshold) {
+      if (!enemy.phaseState.phaseKey || parseInt(enemy.phaseState.phaseKey.slice(5)) > threshold) {
+        enemy.phaseState.phaseKey = key;
+      }
+    }
+  }
+
+  if (enemy.phaseState.phaseKey) {
+    bestKey = enemy.phaseState.phaseKey;
+    bestThreshold = parseInt(bestKey.slice(5));
+  }
+
+
+  console.log('Mokgut phase threshold:', enemy.name, bestThreshold, 'HP:', currentHP);
+
+  if (bestKey) {
+    baseMoves = enemy[bestKey];
+    newMovePoolKey = bestKey;
+  }
+
+  // Reset cooldown if move pool just switched
+if (enemy.cooldownMeta?.lastMovePool !== newMovePoolKey) {
+  if (!updatedCooldowns[realEnemyIndex]) updatedCooldowns[realEnemyIndex] = {};
+  for (const move of baseMoves) {
+    const cooldownKey = move.id || move.name;
+    if (updatedCooldowns[realEnemyIndex][cooldownKey] !== undefined) {
+      delete updatedCooldowns[realEnemyIndex][cooldownKey];
+    }
+  }
+
+  // ✅ Apply new move pool so 'shoot' phase sees updated moves
+  enemy.moves = baseMoves;
+}
+
+
+  // Track latest move pool
+  enemy.cooldownMeta = { lastMovePool: newMovePoolKey };
+
+
+  const { plays, movement = 'static', playrate = 1 } = enemy;
+
+  const isContinuous = plays === 'continuous';
+  const maxPlays = isContinuous ? Infinity : plays || 1;
+
+  // Skip turn if not on playrate cycle
+  if ((battleTurn - 1) % playrate !== 0) return;
+
+  let selected = [];
+
+  for (const move of baseMoves) {
+    const { firstplay, cooldown, name, chance = 1, type } = move;
+
+    const currentHP = enemyHPs[realEnemyIndex];
+
+    // firstplayhp condition
+    if (move.firstplayhp !== undefined) {
+      const lockedPhaseThreshold = parseInt(enemy.phaseState?.phaseKey?.slice(5) ?? '9999');
+      if (lockedPhaseThreshold > move.firstplayhp) continue;
+    }
+
+    if (move.firstplayhp !== undefined && cooldown !== undefined) {
+      const lastUsed = updatedCooldowns[realEnemyIndex]?.[name];
+      if (lastUsed !== undefined && battleTurn - lastUsed < cooldown) continue;
+    } else if (move.firstplayhp !== undefined) {
+      const alreadyUsed = updatedCooldowns[realEnemyIndex]?.[name] !== undefined;
+      if (alreadyUsed) continue;
+    }
+
+    // firstplay / cooldown gating
+    if (firstplay !== undefined && cooldown !== undefined) {
+      if (battleTurn < firstplay || (battleTurn - firstplay) % cooldown !== 0) continue;
+    } else if (firstplay !== undefined) {
+      if (battleTurn !== firstplay) continue;
+    } 
+    
+    const cooldownKey = move.id || name;
+
+    if (cooldown === 'inf') {
+      const alreadyUsed = updatedCooldowns[realEnemyIndex]?.[cooldownKey] !== undefined;
+      if (alreadyUsed) continue;
+    } else if (cooldown !== undefined) {
+      const lastUsed = updatedCooldowns[realEnemyIndex]?.[cooldownKey];
+      if (lastUsed !== undefined && battleTurn - lastUsed < cooldown) continue;
+    }
+
+// Later when assigning cooldown:
+updatedCooldowns[realEnemyIndex][cooldownKey] = battleTurn;
+
+    // pass chance
+    if (Math.random() < chance) {
+      selected.push(move);
+
+      // Track cooldown if needed
+      if (cooldown !== undefined && firstplay === undefined) {
+        if (!updatedCooldowns[realEnemyIndex]) updatedCooldowns[realEnemyIndex] = {};
+        updatedCooldowns[realEnemyIndex][cooldownKey] = battleTurn;
+      }
+
+      if (!isContinuous && selected.length >= maxPlays) break;
+    }
+  }
+
+  // ❗ Only pad with nulls if not continuous
+  if (!isContinuous) {
+    while (selected.length < maxPlays) {
+    const fillType = enemy.fill === 'none' ? 'BLANK' : null;
+    selected.push(fillType);
+    }
+  }
+
+  // Shuffle if needed
+  // Enhanced shuffle with support for locked move positions
+  if (movement === 'random') {
+    const lockedMap = selected
+      .map((move, i) => ({ index: i, move }))
+      .filter(m => m.move && m.move.locked === 'yes');
+
+    const lockedSlots = {}; // slot index → move
+    for (const { index, move } of lockedMap) {
+      lockedSlots[index] = move;
+    }
+
+    const unlockedMoves = selected.filter(
+      move => !Object.values(lockedSlots).includes(move)
+    );
+
+    // Shuffle unlocked moves
+    for (let i = unlockedMoves.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [unlockedMoves[i], unlockedMoves[j]] = [unlockedMoves[j], unlockedMoves[i]];
+    }
+
+    // Insert locked moves into their required slots
+    const final = [];
+    let unlockedIndex = 0;
+    const total = selected.length;
+    for (let i = 0; i < total; i++) {
+      if (lockedSlots[i]) {
+        final[i] = lockedSlots[i];
+      } else {
+        final[i] = unlockedMoves[unlockedIndex++];
+      }
+    }
+
+    selected = final;
+  }
+
+
+  enemyPlays.push({
+    enemyIndex: realEnemyIndex,
+    moves: selected,
+  });
+});
+
+
+    // 2. Flatten all plays
+    let allEnemyPlays = enemyPlays.flatMap(ep =>
+      ep.moves.map(move => {
+      if (!move || move === 'BLANK') {
+        return { type: 'BLANK', enemyIndex: ep.enemyIndex }; // or null type
+      }
+
+      return {
+        type: move.type,
+        id: move.id || move.name,
+        enemyIndex: ep.enemyIndex,
+      };
+    })
+    );
+
+    // 2.5 Full random
+    const anyFullRandom = aliveEnemies.some(e => e.movement === 'full-random');
+    if (anyFullRandom) {
+      for (let i = allEnemyPlays.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allEnemyPlays[i], allEnemyPlays[j]] = [allEnemyPlays[j], allEnemyPlays[i]];
+      }
+    }
+
+    // 3. If needed, distribute extra blanks to leftmost enemies
+    const diff = playerPlayed.length - allEnemyPlays.length;
+    if (enemyPlays.length > 0) {
+      let blanksAdded = 0;
+      let enemyCursor = 0;
+        while (blanksAdded < diff) {
+          const { enemyIndex } = enemyPlays[enemyCursor % enemyPlays.length];
+          const fillType = enemies[enemyIndex]?.fill === 'none' ? 'BLANK' : null;
+
+          allEnemyPlays.push({ type: fillType, enemyIndex });
+          blanksAdded++;
+          enemyCursor++;
+        }
+
+    } else {
+      // fallback: fill with null targets if no enemies played at all
+      for (let i = 0; i < diff; i++) {
+        allEnemyPlays.push({ type: null, enemyIndex: -1 });
+      }
+    }
+
+
+    setTimeout(() => {
+      setEnemyMoveCooldowns(updatedCooldowns)
+      setEnemyPlayed(allEnemyPlays);
+      setPhase('highlight');
+    }, 1000);
+  }
+}, [phase, enemies, playerPlayed.length]);
+
+useEffect(() => {
+  if (inBattle) {
+    resetBattle();
+  }
+}, [inBattle]);
+
+useEffect(() => {
+  if (!inBattle) return;
+  resetBattle();
+}, [currentTile]);
+
+function selectEnemyMove(enemy) {
+    const rand = Math.random();
+    let cumulative = 0;
+    for (const move of enemy.moves) {
+      cumulative += move.chance;
+      if (rand <= cumulative) return move;
+    }
+    return enemy.moves[0]; // fallback
+  }
+
+function resetBattle() {
+  const waves = getEnemiesForTile(currentTile);
+  setEnemyWaves(waves);
+  setCurrentWaveIndex(0);
+
+  const firstWave = waves[0].map(e => ({ ...e, alive: true }));
+  setEnemies(firstWave);
+  const hpArray = firstWave.map(e => e.hp);
+  setEnemyHPs(hpArray);
+  setDisplayEnemyHPs(hpArray);
+  setVictory(false);
+  setPhase('player');
+  setPlayerHP(maxHP);
+  setDisplayPlayerHP(maxHP);
+  setPlayerPlayed([]);
+  setEnemyPlayed([]);
+  setBattleTurn(1);
+  setBannedCardsThisBattle([]);
+}
+
+
+function playCard(card) {
+  if (phase !== 'player') return;
+  if (playerPlayed.includes(card)) return; // only one of each type
+
+  if (card === 'Scroll of Switchroo') {
+    setSwitchrooUsed(true);      
+    setShowSwitchrooMessage(true);
+    setPreSwitchPlayerPlayed(null); // clear previous revert state
+  }
+
+  if (card === "Placeholder") {
+    if (placeholderUsesThisTurn >= 3) return; // Max 3 per turn
+
+    setPlayerPlayed((prev) => [...prev, null]); // add a gap
+    setPlaceholderUsesThisTurn((count) => count + 1);
+    return;
+  }
+
+  setPlayerPlayed(prev => [...prev, card]);
+}
+
+function endPlayerTurn() {
+  if (phase !== 'player') return;
+
+  // Only set to true if actually played
+  if (playerPlayed.includes('Scroll of Switchroo')) {
+    setSwitchrooUsed(true);
+  } else {
+    setSwitchrooUsed(false);
+    setSwitchrooActive(false);
+    setShowSwitchrooMessage(false);
+  }
+
+  setPhase('enemy');
+}
+
+const handleTriangleHover = () => {
+  if (phase === 'highlight') {
+    setForeshadowing(true);
+
+    const pHighlights = [];
+    const eHighlights = [];
+
+    for (let i = 0; i < Math.max(playerPlayed.length, enemyPlayed.length); i++) {
+      const p = playerPlayed[i];
+      const eObj = enemyPlayed[i] || {};
+      const e = eObj?.type;
+      const enemyIndex = eObj?.enemyIndex ?? -1;
+      const enemy = enemies[enemyIndex];
+      const move = enemy?.moves?.find(m => (m.id || m.name) === eObj?.id);
+
+      let pResult = 'neutral';
+      let eResult = 'neutral';
+
+      if (!p && !e) {
+        // Nothing played
+        pResult = 'neutral';
+        eResult = 'neutral';
+      } else if (p && (!e || e === 'BLANK' || !enemy || !enemy.alive)) {
+        // Player plays vs blank/dead
+        pResult = 'win';
+        eResult = 'lose';
+      } else if (!p && e && enemy?.alive && e !== 'BLANK') {
+        // Enemy plays vs empty slot
+        pResult = 'lose';
+        eResult = 'win';
+      } else {
+        // Both sides played valid moves
+        const playerTypes = cardData[p]?.type || [];
+        const enemyTypes = move?.type || [];
+
+        const fairySwitchActive = enemies.some(e => e.alive && e.onBoard === 'fairySwitch');
+        const playerWins = beats(playerTypes, enemyTypes);
+        const enemyWins = beats(enemyTypes, playerTypes);
+
+        if (!fairySwitchActive) {
+          if (playerWins) {
+            pResult = 'win';
+            eResult = 'lose';
+          } else if (enemyWins) {
+            pResult = 'lose';
+            eResult = 'win';
+          }
+        } else {
+          if (playerWins) {
+            pResult = 'lose';
+            eResult = 'win';
+          } else if (enemyWins) {
+            pResult = 'win';
+            eResult = 'lose';
+          }
+        }
+      }
+
+      pHighlights.push(pResult);
+      eHighlights.push(eResult);
+    }
+
+    setPlayerHighlights(pHighlights);
+    setEnemyHighlights(eHighlights);
+  }
+};
+
+const handleTriangleUnhover = () => {
+  if (phase === 'highlight') {
+    setForeshadowing(false);
+    setPlayerHighlights([]);
+    setEnemyHighlights([]);
+  }
+};
+
+  const playGame = (choice) => {
+    const compChoice = choices[Math.floor(Math.random() * choices.length)];
+    setPlayerChoice(choice);
+    setComputerChoice(compChoice);
+    determineWinner(choice, compChoice);
+    setGameCount(prev => prev + 1);
+  };
+
+  const determineWinner = (player, computer) => {
+    if (player === computer) {
+      setResult("It's a Tie!");
+    } else if (
+      (player === 'Rock' && computer === 'Scissor') ||
+      (player === 'Paper' && computer === 'Rock') ||
+      (player === 'Scissor' && computer === 'Paper')
+    ) {
+      setResult('You Win!');
+    } else {
+      setResult('You Lose!');
+    }
+  };
+
+  // -------------------
+  // RENDER
+  // -------------------
+
+  const requiredPlaysByTile = {
+    0: {
+      1: ['Rock'],      // Tile 1 (index 0), Turn 1
+      2: ['Paper'],     // Tile 2 (index 0), Turn 2
+      3: ['Scissor'],
+      4: ['Rock'],
+    },
+    1: {
+      1: 'anyRPS', 
+    },
+    4: {
+      1: ['Rock', 'Scissor', 'Hide'], 
+      highlight: {
+        1: ['Rock', 'Hide', 'Scissor'],
+      },
+    },
+  };
+
+  const strictRequired = requiredPlaysByTile[currentTile]?.[battleTurn];
+
+  const highlightField = requiredPlaysByTile[currentTile]?.highlight;
+  const highlightRequired =
+    typeof highlightField === 'object' && !Array.isArray(highlightField)
+      ? highlightField[battleTurn]
+      : highlightField;
+
+  // Handles fixed, flexible, and keyword-based restrictions
+  const matchRequirement = (requirement, played) => {
+    if (!requirement) return true;
+
+    if (requirement === 'anyRPS') {
+      const sortedPlayed = [...played].sort().join(',');
+      const sortedRPS = ['Paper', 'Rock', 'Scissor'].sort().join(',');
+      return sortedPlayed === sortedRPS;
+    }
+
+    return JSON.stringify(played) === JSON.stringify(requirement);
+  };
+
+  const isCorrectPlayerPhase = matchRequirement(strictRequired, playerPlayed);
+  const isCorrectHighlightPhase = matchRequirement(highlightRequired, playerPlayed);
+
+  const canPressTriangle =
+    (phase === 'player' && isCorrectPlayerPhase) ||
+    (phase === 'highlight' &&
+      isCorrectHighlightPhase &&
+      !switchrooActive &&
+      selectedSwapIndexes.length !== 1);
+    
+  const dungeonLevel = Math.floor(currentTile / 5) + 1;
+
+return (
+    <>
+    {dialogVisible && (
+      <DialogOverlay
+        name={dialogName}
+        text={dialogText}
+        specialDialogAnim={specialDialogAnim} 
+        onClose={() => {
+        if (specialChestFlow) {
+          handleSpecialChestFlow({
+            specialChestStep,
+            setDialogVisible,
+            setDialogName,
+            setDialogText,
+            setFadeDungeonOut,
+            setShowDungeon,
+            setSpecialChestFlow,
+            setSpecialChestStep,
+            setSpecialDialogAnim,
+          });
+        } else {
+          setTimeout(() => setDialogVisible(false), 300);
+        }
+      }}
+      />
+    )}
+
+
+    <div className={`App ${weirdMode ? 'weird' : ''}`}>
+      {switchrooActive && (
+        <>
+          <div className="switchroo-glow-left" />
+          <div className="switchroo-glow-right" />
+        </>
+      )}
+          {fadeDungeonOut && (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'black',
+          zIndex: 999,
+          opacity: 1,
+          transition: 'opacity 1s ease'
+        }}
+      />
+    )}
+
+      {inBattle ? (
+      <div className="battle-screen fade-in">
+        
+{/* INSTANT WIN BUTTON */}
+<button
+  onClick={() => {
+    // Set all enemies to 0 HP
+    const zeros = enemyHPs.map(() => 0);
+    setEnemyHPs(zeros);
+    setDisplayEnemyHPs(zeros);
+    
+    // Mark all enemies as dead
+    setEnemies(prev =>
+      prev.map(enemy => ({ ...enemy, alive: false }))
+    );
+    setPhase('shoot');
+  }}
+  style={{
+    position: 'absolute',
+    bottom: '10px',
+    left: '10px',
+    padding: '0.5rem 1rem',
+    backgroundColor: 'red',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    zIndex: 1000,
+    fontWeight: 'bold',
+    cursor: 'pointer',
+  }}
+>
+  WIN INSTANTLY
+</button>
+
+
+      {/* BACKPACK ICON BUTTON (bottom left, opposite triangle) */}
+      {currentTile >= 1 && (
+        <button
+          onClick={() => setShowBackpack(true)}
+          className="backpack-button"
+          aria-label="Open Backpack"
+        >
+          <GiBackpack />
+        </button>
+      )}
+
+      {showBackpack && (
+        <>
+          <div className="blur-overlay" onClick={() => setShowBackpack(false)} />
+          <div className="backpack-popup">
+            <div className="backpack-header">
+              <h2>Backpack</h2>
+              <button
+                onClick={() => setShowBackpack(false)}
+                className="backpack-close"
+                aria-label="Close Backpack"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="backpack-grid">
+              
+              {coinCount > 0 && (
+                <div className="card backpack-card">
+                  💰 {coinCount} Coins
+                  <div className="tooltip">
+                    <strong>Coins</strong>
+                    <br />
+                    Used for future purchases or bribes.
+                  </div>
+                </div>
+              )}
+
+              {playerBackpack.map((card, i) => {
+                const data = cardData[card];
+                return (
+                  <div key={i} className="card backpack-card">
+                    {data?.displayName || card}
+                    <div className="tooltip">
+                      <strong>{data?.displayName || card}</strong>
+                      {(Array.isArray(data?.description) ? data.description : [data?.description]).map((line, i) => (
+                        <React.Fragment key={i}>
+                          <br />
+                          {line}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+        {/* SETTINGS BUTTON */}
+        <button
+          onClick={() => setShowSettings(true)}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            zIndex: 1000,
+            padding: '0.4rem',
+            borderRadius: '6px',
+            background: 'transparent',
+            color: 'white',
+            border: 'none',
+            cursor: 'pointer',
+          }}
+          aria-label="Settings"
+        >
+          <FiSettings size={28} />
+        </button>
+
+
+        {/* SETTINGS PANEL */}
+        {showSettings && (
+          <>
+            <div className="blur-overlay" />
+            <div
+              style={{
+                position: 'fixed',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                border: '2px solid white',
+                color: 'white',
+                padding: '2rem',
+                borderRadius: '12px',
+                zIndex: 1101,
+                textAlign: 'center',
+              }}
+            >
+            <button
+              onClick={() => setShowSettings(false)}
+              style={{
+                position: 'absolute',
+                top: '10px',
+                right: '10px',
+                background: 'transparent',
+                color: 'white',
+                border: 'none',
+                fontSize: '1.5rem',
+                cursor: 'pointer',
+              }}
+            >
+              ✕
+            </button>
+
+            <h2>Settings</h2>
+            <p>Speed Up Phase:</p>
+            {[1, 1.5, 2, 4, 8].map((val) => (
+              <button
+                key={val}
+                onClick={() => setSpeedMultiplier(val)}
+                style={{
+                  margin: '0.25rem',
+                  padding: '0.5rem 1rem',
+                  background: speedMultiplier === val ? '#0af' : '#555',
+                  border: 'none',
+                  borderRadius: '6px',
+                  color: 'white',
+                  cursor: 'pointer',
+                }}
+              >
+                {val}x
+              </button>
+            ))}
+          </div>
+          </>
+        )}
+
+        {/* ENEMY HEADER */}
+        <div className="enemy-header multiple-enemies">
+          {enemies.map((enemy, index) => (
+              <div
+                key={index}
+                className={`enemy-display 
+                ${!enemy.alive ? 'fade-out' : ''} 
+                ${waveTransitioningEnemies.includes(index) ? 'wave-in' : ''}`}
+                style={{ display: hiddenEnemies.includes(index) ? 'none' : 'block' }}
+              >
+
+                <div
+                  onMouseEnter={() => setHoveredEnemyIndex(index)}
+                  onMouseLeave={() => setHoveredEnemyIndex(null)}
+                  style={{ position: 'relative' }}
+                >
+               <img
+                src={`${process.env.PUBLIC_URL}/Sprites/Enemies/${enemy.image}`}
+                alt={enemy.name}
+                className={`enemy-image ${enemy.isImmortal ? 'enemy-immortal-glow' : ''}`}
+                ref={(el) => (enemyImageRefs.current[index] = el)}
+                style={{ cursor: 'pointer' }}
+              />
+
+              <h2 className="enemy-name">{enemy.name}</h2>
+
+              {hoveredEnemyIndex === index && (
+                <div className="enemy-tooltip">
+                  <div><strong>{enemy.name}</strong></div>
+
+                  {enemy.fill === 'none' && (
+                    <div
+                      className="keyword-tag"
+                      onClick={() => setShowKeywordTooltip('Evasive')}
+                      style={{ fontWeight: 'bold', display: 'inline-block', marginTop: '0.3rem', cursor: 'pointer' }}
+                    >
+                      Evasive
+                    </div>
+                  )}
+
+                  {enemy.death === 'bomb' && (
+                    <div
+                      className="keyword-tag"
+                      onClick={() => setShowKeywordTooltip('Last Laugh')}
+                      style={{ fontWeight: 'bold', display: 'inline-block', marginTop: '0.3rem', cursor: 'pointer' }}
+                    >
+                      Last Laugh
+                    </div>
+                  )}
+
+                  {enemy.death === 'bombSelf' && (
+                    <div
+                      className="keyword-tag"
+                      onClick={() => setShowKeywordTooltip("Last Laugh's On You")}
+                      style={{ fontWeight: 'bold', display: 'inline-block', marginTop: '0.3rem', cursor: 'pointer' }}
+                    >
+                      Last Laugh's On You
+                    </div>
+                  )}
+
+                  {enemy.onBoard === 'fairyBuff' && (
+                    <div
+                      className="keyword-tag"
+                      onClick={() => setShowKeywordTooltip('Power Boost 10')}
+                      style={{ fontWeight: 'bold', display: 'inline-block', marginTop: '0.3rem', cursor: 'pointer' }}
+                    >
+                      Power Boost 10
+                    </div>
+                  )}
+
+                  {enemy.onBoard === 'vanguard' && (
+                    <div
+                      className="keyword-tag"
+                      onClick={() => setShowKeywordTooltip('Vanguard')}
+                      style={{ fontWeight: 'bold', display: 'inline-block', marginTop: '0.3rem', cursor: 'pointer' }}
+                    >
+                      Vanguard
+                    </div>
+                  )}
+
+                  {enemy.onBoard === 'vanguardNext' && (
+                    <div
+                      className="keyword-tag"
+                      onClick={() => setShowKeywordTooltip('VanguardNext')}
+                      style={{ fontWeight: 'bold', display: 'inline-block', marginTop: '0.3rem', cursor: 'pointer' }}
+                    >
+                      Adjacent Vanguard
+                    </div>
+                  )}
+
+                  {enemy.weakness?.length > 0 && (
+                    <div>
+                      <strong>Weakness:</strong>
+                      {enemy.weakness.map((w, idx) => (
+                        <div key={idx}>{w.name} - {w.debuff}x</div>
+                      ))}
+                    </div>
+                  )}
+                  {enemy.strength?.length > 0 && (
+                    <div>
+                      <br />
+                      <strong>Resistance:</strong>
+                      {enemy.strength.map((w, idx) => (
+                        <div key={idx}>
+                          {w.name} - {w.buff === "Immunity" ? "Immunity" : `${w.buff}x`}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+              <p>HP: {displayEnemyHPs[index]}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* ENEMY PLAYED CARDS */}
+        <div className="battle-info">
+          <h3 className="fontsize">Enemy Play Order:</h3>
+          <div className="card-row horizontal">
+            {(() => {
+              const enemyDisplay = [...enemyPlayed];
+              while (enemyDisplay.length < playerPlayed.length) {
+                enemyDisplay.push(null);
+              }
+              return enemyDisplay.map((cardObj, i) => {
+                const card = cardObj?.type;
+                const enemyIndex = cardObj?.enemyIndex;
+                const enemy = enemies[enemyIndex];
+                const isDead = enemy && !enemy.alive;
+
+                let className = "card shaped";
+                if (phase === 'shoot' && shootIndex === i) className += " highlight";
+                if (enemyHighlights[i] === 'win') className += " green";
+                else if (enemyHighlights[i] === 'lose') className += " red";
+                if (card === 'BLANK') className += ' deadblank';
+                else if (!card || isDead) className += ' blank';
+                if (
+                  hoveredEnemyIndex != null &&
+                  enemyIndex === hoveredEnemyIndex &&
+                  phase === 'highlight'
+                ) {
+                  className += " hover-highlight";
+                }
+
+                const move = enemy?.moves.find(m => (m.id || m.name) === cardObj?.id);
+
+                return (
+                  <div
+                    key={i}
+                    className={className}
+                    ref={(el) => (enemyCardRefs.current[i] = el)}
+                    onMouseEnter={() => setHoveredCardIndex(i)}
+                    onMouseLeave={() => setHoveredCardIndex(null)}
+                    style={{ position: 'relative' }}
+                  >
+                    {card === 'BLANK' ? '' : (!card || isDead ? '—' : (
+
+                      <>
+                        {move?.name || card}
+                        <div className="tooltip">
+                        <strong>{move?.name}</strong>: {move?.description}
+                        {/*
+                          {move?.heal && (
+                            <>
+                              <br />
+                              Heal Target: {move.heal}
+                            </>
+                          )}
+                        */}
+                        {((typeof move?.damage === 'number' && move.damage !== 0) || move?.name === 'Vengebite') && (
+                          <>
+                            <br />
+                            {(Array.isArray(move?.type) && move.type.includes("Heal") ? "Heal" : "Damage")}: {
+                            (() => {
+                                  const fairyBuffCount = enemies.filter(e => e.alive && e.onBoard === 'fairyBuff').length;
+
+                                  // Handle Vengebite
+                                  if (move?.name === 'Vengebite' && (phase === 'highlight' || phase === 'shoot')) {
+                                    const otherAttackers = enemyPlayed.filter(
+                                      (p, idx) =>
+                                        p?.enemyIndex !== enemyIndex &&
+                                        p?.type &&
+                                        p.type !== 'Hide'
+                                    ).length;
+
+                                    let dmg = 10 + 5 * otherAttackers;
+                                    if (fairyBuffCount) dmg += 10;
+                                    return dmg;
+                                  }
+
+                                  // Handle regular damage
+                                  const targetCard = playerPlayed[i];
+                                  const isStrong = move?.strong && targetCard === move.strong;
+                                  let dmg = isStrong ? move.damage * move.strongV : move.damage;
+                                  if (typeof dmg === 'number') dmg += 10 * fairyBuffCount;
+                                  return dmg;
+                                })()
+                              }
+
+                              {/* Tooltip notes */}
+                              {(() => {
+                                const fairyBuffCount = enemies.filter(e => e.alive && e.onBoard === 'fairyBuff').length;
+                                const isVengebite = move?.name === 'Vengebite';
+
+                                const otherAttackers = enemyPlayed.filter(
+                                  (p, idx) =>
+                                    p?.enemyIndex !== enemyIndex &&
+                                    p?.type &&
+                                    p.type !== 'Hide'
+                                ).length;
+
+                                if (fairyBuffCount || isVengebite) {
+                                  return (
+                                    <>
+                                      <br />
+                                      <em>
+                                        {isVengebite && (
+                                          <>
+                                            +5 × {otherAttackers} = {5 * otherAttackers} bonus
+                                          </>
+                                        )}
+                                        {isVengebite && fairyBuffCount && '; '}
+                                        {fairyBuffCount > 0 && `+${10 * fairyBuffCount} from Fairy Buff${fairyBuffCount > 1 ? 's' : ''}`}
+                                      </em>
+                                    </>
+                                  );
+                                }
+                                return null;
+                              })()
+                            }
+                          </>
+                        )}
+                      </div>
+                      </>
+                    ))}
+                  </div>
+                );
+              });
+            })()}
+          </div>
+
+          <div className="turn-indicator">
+            <h3 style={{ textAlign: 'center' }}>
+              Turn {battleTurn}
+            </h3>
+          </div>
+
+          {/* Player Played Cards */}
+          <div className={`card-row-wrapper ${switchrooActive ? 'switchroo-border-glow' : ''}`}>
+            <div className="card-row horizontal">
+            {(() => {
+              const playerDisplay = [...playerPlayed];
+              while (playerDisplay.length < enemyPlayed.length) {
+                playerDisplay.push(null);
+              }
+
+              return playerDisplay.map((card, i) => {
+              let isSwappableWithTotem =
+                phase === 'highlight' &&
+                playerBackpack.includes("Severing Hand Totem") &&
+                ((card == null && playerPlayed.some(c => c != null)) || (card != null && playerPlayed.includes(null)));
+
+              let className = "card shaped selected";
+              if (selectedSwapIndexes.includes(i)) className += " selected-swap";
+              if (phase === 'shoot' && shootIndex === i) className += " highlight";
+              if (playerHighlights[i] === 'win') className += " green";
+              else if (playerHighlights[i] === 'lose') className += " red";
+              if (!card) className += " blank";
+              if (isSwappableWithTotem) className += " swappable-totem";
+
+              const data = cardData[card];
+
+              return (
+                <div
+                  key={i}
+                  className={className}
+                  onClick={() => {
+                    const hasTotem = playerBackpack.includes("Severing Hand Totem");
+
+                    if (phase === 'highlight') {
+                    if (switchrooActive) {
+                    const hasSwitchroo = playerHand.includes('Scroll of Switchroo') && !playerPlayed.includes('Scroll of Switchroo');
+                      if (hasSwitchroo && !switchrooUsed) {
+                        if (selectedSwapIndexes.includes(i)) {
+                          setSelectedSwapIndexes(selectedSwapIndexes.filter(idx => idx !== i));
+                        } else if (selectedSwapIndexes.length < 2) {
+                          setSelectedSwapIndexes([...selectedSwapIndexes, i]);
+                        }
+
+                        if (selectedSwapIndexes.length === 1) {
+                        const [a] = selectedSwapIndexes;
+                        const b = i;
+
+                        if (a !== b) {
+                        setPreSwitchPlayerPlayed([...playerPlayed]);
+
+                        const newOrder = [...playerPlayed];
+                        [newOrder[a], newOrder[b]] = [newOrder[b], newOrder[a]];
+
+                        const swappedIndexes = [a, b];
+                        swappedIndexes.forEach((index) => {
+                          const el = document.querySelectorAll('.card-row-wrapper .card-row.horizontal .card')[index];
+                          if (el) {
+                            el.classList.add('swap-anim');
+                            setTimeout(() => el.classList.remove('swap-anim'), 400); // match CSS duration
+                          }
+                        });
+
+                        setPlayerPlayed(newOrder);
+                        setSwitchrooUsed(true);
+                        setSelectedSwapIndexes([]);
+                        setSwitchrooActive(false);
+                        }
+                        }
+
+                      }
+                      } else if (hasTotem) {
+                        if (selectedSwapIndexes.length === 0) {
+                          setSelectedSwapIndexes([i]);
+                        } else {
+                          const a = selectedSwapIndexes[0];
+                          const b = i;
+                          if (a !== b) {
+                            const cardA = playerPlayed[a];
+                            const cardB = playerPlayed[b];
+                            const canSwap = (
+                              (cardA != null && cardB == null) ||
+                              (cardA == null && cardB != null)
+                            );
+                            if (canSwap) {
+                              const newOrder = [...playerPlayed];
+                              [newOrder[a], newOrder[b]] = [newOrder[b], newOrder[a]];
+                              setPlayerPlayed(newOrder);
+                            }
+                          }
+                          setSelectedSwapIndexes([]);
+                        }
+                      }
+                    } else if (phase === 'player' && card) {
+                      setPlayerPlayed(prev => prev.filter((_, idx) => idx !== i));
+                    } else if (phase === 'player' && card === null) {
+                      setPlayerPlayed(prev => {
+                        const updated = [...prev];
+                        updated.splice(i, 1);
+                        return updated;
+                      });
+                      setPlaceholderUsesThisTurn(prev => Math.max(prev - 1, 0));
+                      setPlaceholderNullIndexes(prev => prev.filter(idx => idx !== i).map(idx => (idx > i ? idx - 1 : idx)));
+                    }
+                  }}
+                  style={{
+                    cursor: switchrooActive
+                      ? 'inherit'
+                      : (phase === 'player' && card ? 'pointer' : 'grab'),
+                    position: 'relative'
+                  }}
+                >
+                  {data?.name || card || '—'}
+                  {card && data && (
+                    <div className="tooltip">
+                      <strong>{data.displayName || data.name}</strong>
+                      {(Array.isArray(data.description) ? data.description : [data.description]).map((line, i) => (
+                        <React.Fragment key={i}>
+                          <br />
+                          {line}
+                        </React.Fragment>
+                      ))}
+                      {typeof data.damage === 'number' && (
+                        <>
+                          <br />
+                          Damage: {data.damage}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+            })()}
+            </div>
+          </div>
+        </div>
+
+        <h3 className="fontsize">HP: {displayPlayerHP}</h3>
+
+        {/* PLAYER HAND */}
+        <div className="player-hand-section">
+          <h3 className="fontsize">Your Moves</h3>
+          <div className="card-row horizontal">
+            {playerHand
+              .filter(card => !bannedCardsThisBattle.includes(card))
+              .map((card, i) => {
+              const data = cardData[card];
+              const isPlaceholder = card === "Placeholder";
+              const placeholderUsedUp = isPlaceholder && placeholderUsesThisTurn >= 3;
+              const isUsed = playerPlayed.includes(card);
+              const isTutorialTile = currentTile === 0 && !firstBattleIntroShown;
+
+              let isTutorialLock = false;
+              if (isTutorialTile) {
+                if (battleTurn === 1 && card !== 'Rock') isTutorialLock = true;
+                else if (battleTurn === 2 && card !== 'Paper') isTutorialLock = true;
+                else if (battleTurn === 3 && card !== 'Scissor') isTutorialLock = true;
+                else if (battleTurn === 4 && card !== 'Rock') isTutorialLock = true;
+              }
+
+              return (
+                <div
+                  key={i}
+                  className={`card shaped ${isUsed ? 'used' : ''} ${
+                    destroyingCardIndices.includes(i) ? 'destroy' : ''
+                  } ${
+                    card === 'Scroll of Switchroo' && phase === 'highlight' && !switchrooUsed
+                      ? (switchrooActive ? 'switchroo-dimmed' : 'switchroo-glow')
+                      : ''
+                  }`}
+                  onClick={() => {
+                    if (card === 'Scroll of Switchroo' && phase === 'highlight' && !switchrooUsed) {
+                      setSwitchrooActive(prev => !prev);
+                    } else if (phase === 'player' && !isUsed) {
+                      if (isPlaceholder && !placeholderUsedUp) playCard(card);
+                      else if (!isPlaceholder) playCard(card);
+                    }
+                  }}
+                  style={{
+                    cursor:
+                      phase !== 'player' ||
+                      isTutorialLock ||
+                      (isPlaceholder && placeholderUsedUp) ||
+                      (!isPlaceholder && isUsed)
+                        ? 'grab'
+                        : 'grab',
+                    opacity:
+                      isTutorialLock || (isPlaceholder && placeholderUsedUp) || isUsed
+                        ? 0.4
+                        : 1,
+                  }}
+                >
+                  {data.displayName || data.name}
+                  <div className="tooltip">
+                    <strong>{data.displayName || data.name}</strong>
+                    {(Array.isArray(data.description) ? data.description : [data.description]).map((line, i) => (
+                      <React.Fragment key={i}>
+                        <br />
+                        {line}
+                      </React.Fragment>
+                    ))}
+                    <br />
+                    Damage: {data.damage}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+        </div>
+
+        {/* SMALLER LEFT TRIANGLE - REVERT */}
+        {phase === 'highlight' && switchrooUsed && !playerPlayed.includes('Scroll of Switchroo') && (
+          <div
+            className="triangle-revert-button"
+            onClick={() => {
+              if (preSwitchPlayerPlayed) {
+                setPlayerPlayed(preSwitchPlayerPlayed);
+                setSelectedSwapIndexes([]);
+                setSwitchrooUsed(false); // allows glow again
+                setSwitchrooActive(false);
+                setPreSwitchPlayerPlayed(null); // reset so it can retrigger on next Scroll of Switchroo play
+                setShowSwitchrooMessage(false);
+              }
+            }}
+          ></div>
+        )}
+
+        {/* UNIFIED TRIANGLE BUTTON */}
+        <div
+          className="triangle-button"
+          onClick={() => {
+            if (phase === 'player') {
+              endPlayerTurn();
+            } else if (phase === 'highlight') {
+              if (
+                switchrooActive ||
+                selectedSwapIndexes.length === 1
+              ) return; // Disabled condition
+              if (playerPlayed.includes('Scroll of Switchroo')) setSwitchrooUsed(true);
+              setPhase('shoot');
+            }
+          }}
+          onMouseEnter={handleTriangleHover}
+          onMouseLeave={handleTriangleUnhover}
+          style={{
+            opacity: canPressTriangle ? 1 : 0.5,
+            pointerEvents: canPressTriangle ? 'auto' : 'none'
+          }}
+        >
+        </div>
+
+
+  
+
+{/* SVG LINE FROM CARD TO ENEMY */}
+        <svg className="battle-line-layer">
+          {hoveredCardIndex != null && (() => {
+            const cardObj = enemyPlayed[hoveredCardIndex];
+            const cardEl = enemyCardRefs.current[hoveredCardIndex];
+            const enemyEl = enemyImageRefs.current[cardObj?.enemyIndex];
+            const card = cardObj?.type;
+
+            const enemy = enemies[cardObj?.enemyIndex];
+            if (!cardEl || !enemyEl || !enemy || !enemy.alive) return null;
+
+
+            const cardRect = cardEl.getBoundingClientRect();
+            const enemyRect = enemyEl.getBoundingClientRect();
+
+            const scrollX = window.scrollX || window.pageXOffset;
+            const scrollY = window.scrollY || window.pageYOffset;
+
+            const x1 = cardRect.left + cardRect.width / 2 + scrollX;
+            const y1 = cardRect.top + cardRect.height / 2 + scrollY;
+            const x2 = enemyRect.left + enemyRect.width / 2 + scrollX;
+            const y2 = enemyRect.top + enemyRect.height / 2 + scrollY;
+
+            return (
+              <line
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke="gold"
+              strokeWidth="2"
+              strokeDasharray="4 4"
+              className="animated-line"
+            />
+            );
+          })()}
+        </svg>
+
+      {showKeywordTooltip === 'Evasive' && (
+        <>
+          <div className="blur-overlay" />
+          <div
+            className="keyword-explanation-tooltip"
+            style={{ zIndex: 1101 }}
+            onClick={() => setShowKeywordTooltip(null)}
+          >
+            <strong>Evasive</strong>
+            This enemy refuses to fill extra card slots.<br />
+            If you play more cards than it does,<br />
+            their empty slots will become blank and harmless.
+            <br />
+            <br />
+            <em>(Click to close)</em>
+          </div>
+          </>
+        )}
+
+      {showKeywordTooltip === 'Last Laugh' && (
+        <>
+          <div className="blur-overlay" />
+          <div
+            className="keyword-explanation-tooltip"
+            style={{ zIndex: 1101 }}
+            onClick={() => setShowKeywordTooltip(null)}
+          >
+            <strong>Last Laugh</strong>
+            When defeated by an enemy card, it destroys that card.<br />
+            Destroyed cards are unusable for the rest of the battle.
+            <br />
+            <br />
+            <em>(Click to close)</em>
+          </div>
+          </>
+        )}
+
+      {showKeywordTooltip === "Last Laugh's On You" && (
+        <>
+          <div className="blur-overlay" />
+          <div
+            className="keyword-explanation-tooltip"
+            style={{ zIndex: 1101 }}
+            onClick={() => setShowKeywordTooltip(null)}
+          >
+            <strong>Last Laugh's On You</strong>
+            When defeated in any way, destroy the enemy's leftmost card.<br />
+            Destroyed cards are unusable for the rest of the battle.
+            <br />
+            <br />
+            <em>(Click to close)</em>
+          </div>
+          </>
+        )}
+
+        {showKeywordTooltip === 'Vanguard' && (
+          <>
+            <div className="blur-overlay" />
+            <div
+              className="keyword-explanation-tooltip"
+              style={{ zIndex: 1101 }}
+              onClick={() => setShowKeywordTooltip(null)}
+            >
+              <strong>Vanguard</strong><br />
+              This enemy protects allies.<br />
+              If an ally would take damage,<br />
+              Vanguard takes the hit instead.
+              <br />
+              <br />
+              <em>(Click to close)</em>
+            </div>
+            </>
+          )}
+
+        {showKeywordTooltip === 'VanguardNext' && (
+          <>
+            <div className="blur-overlay" />
+            <div
+              className="keyword-explanation-tooltip"
+              style={{ zIndex: 1101 }}
+              onClick={() => setShowKeywordTooltip(null)}
+            >
+              <strong>Adjacent Vanguard</strong><br />
+              This enemy protects allies around it.<br />
+              If an ally would take damage,<br />
+              Vanguard takes the hit instead.
+              <br />
+              <br />
+              <em>(Click to close)</em>
+            </div>
+            </>
+          )}
+
+        {showKeywordTooltip === 'Power Boost 10' && (
+        <>
+          <div className="blur-overlay" />
+          <div
+            className="keyword-explanation-tooltip"
+            style={{ zIndex: 1101 }}
+            onClick={() => setShowKeywordTooltip(null)}
+          >
+            <strong>Power Boost 10</strong><br />
+            While this unit remains on the board,<br />
+            all allies gain +10 Attack.
+            <br />
+            <br />
+            <em>(Click to close)</em>
+          </div>
+          </>
+        )}
+
+        {victory && <div className="victory-overlay">Victory!</div>}
+      </div>
+  ) : 
+
+      showRewards ? (
+        <div className={`reward-screen fade-in ${weirdMode ? 'weird' : ''}`}>
+          <h2 className={`reward-title ${weirdMode ? 'weird' : ''}`}>You found:</h2>
+            <div className="reward-items">
+              {(lastDefeatedTile !== null
+                ? getRewardsForTile(lastDefeatedTile)
+                : ['Rock', 'Paper', 'Scissor']
+              ).map((item, i) => {
+                const data = cardData[item];
+                return (
+                  <div key={item} className={`reward-item float-${i}`}>
+                    <div className="card shaped">
+                      {data?.displayName || item}
+                      <div className="tooltip">
+                        <strong>{data?.displayName || item}</strong>
+                        {(Array.isArray(data?.description) ? data.description : [data?.description]).map((line, i) => (
+                          <React.Fragment key={i}>
+                            <br />
+                            {line}
+                          </React.Fragment>
+                        ))}
+                        {typeof data?.damage === 'number' && (
+                          <>
+                            <br />
+                            Damage: {data.damage}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          <button
+            className="continue-button"
+            onClick={() => {
+            const rewards = getRewardsForTile(lastDefeatedTile);
+            const newHandCards = rewards.filter(
+              item => !playerHand.includes(item) && cardData[item]?.type !== 'item'
+            );
+            const newBackpackItems = rewards.filter(
+              item => !playerBackpack.includes(item) && cardData[item]?.type === 'item'
+            );
+
+            if (newHandCards.length > 0) {
+              setPlayerHand(prev => [...prev, ...newHandCards]);
+            }
+
+            let coinsToAdd = 0;
+            const newItems = [];
+
+            for (const item of rewards) {
+              const data = cardData[item];
+              if (!data) continue;
+
+              if (data.type === 'item') {
+                if (data.coins) {
+                  coinsToAdd += data.coins;
+                } else if (!playerBackpack.includes(item)) {
+                  newItems.push(item);
+                }
+              }
+            }
+
+            if (coinsToAdd > 0) {
+              setCoinCount(prev => prev + coinsToAdd);
+            }
+            if (newItems.length > 0) {
+              setPlayerBackpack(prev => [...prev, ...newItems]);
+            }
+
+
+            if (specialChestStep === 17) {
+              setShowRewards(false);
+              setSpecialChestStep(18);
+              setSpecialChestFlow(true);
+
+              handleSpecialChestFlow({
+                specialChestStep: 18,
+                setDialogVisible,
+                setDialogName,
+                setDialogText,
+                setFadeDungeonOut,
+                setShowDungeon,
+                setSpecialChestFlow,
+                setSpecialChestStep,
+                setSpecialDialogAnim,
+              });
+              
+            } else if (specialChestStep === 99) {
+              setShowRewards(false);
+              setSpecialChestFlow(true);
+
+              handleSpecialChestFlow({
+                specialChestStep: 100,
+                setDialogVisible,
+                setDialogName,
+                setDialogText,
+                setFadeDungeonOut,
+                setShowDungeon,
+                setSpecialChestFlow,
+                setSpecialChestStep,
+                setSpecialDialogAnim,
+              });  
+            } else if (specialChestStep === 129) {
+              setShowRewards(false);
+              setSpecialChestFlow(true);
+
+              handleSpecialChestFlow({
+                specialChestStep: 130,
+                setDialogVisible,
+                setDialogName,
+                setDialogText,
+                setFadeDungeonOut,
+                setShowDungeon,
+                setSpecialChestFlow,
+                setSpecialChestStep,
+                setSpecialDialogAnim,
+              });  
+              } else if (specialChestStep === 147) {
+              setShowRewards(false);
+              setSpecialChestFlow(true);
+
+              handleSpecialChestFlow({
+                specialChestStep: 148,
+                setDialogVisible,
+                setDialogName,
+                setDialogText,
+                setFadeDungeonOut,
+                setShowDungeon,
+                setSpecialChestFlow,
+                setSpecialChestStep,
+                setSpecialDialogAnim,
+              });  
+            } else if (currentTile === 158) {
+              setShowRewards(false);
+              setSpecialChestFlow(true);
+
+              handleSpecialChestFlow({
+                specialChestStep: 159,
+                setDialogVisible,
+                setDialogName,
+                setDialogText,
+                setFadeDungeonOut,
+                setShowDungeon,
+                setSpecialChestFlow,
+                setSpecialChestStep,
+                setSpecialDialogAnim,
+              });  
+            } 
+            else {
+              setShowRewards(false);
+              setShowDungeon(true);
+              setLastDefeatedTile(null);
+            }
+          
+          }}
+          >
+            Continue →
+          </button>
+        </div>
+        
+      ) : showDungeon ? (
+
+        <DungeonMap
+          currentTile={currentTile}
+          completedTiles={completedTiles}
+          mapViewDungeon={mapViewDungeon}
+          setMapViewDungeon={setMapViewDungeon}
+          setCurrentTile={setCurrentTile}
+          dungeonLevel={dungeonLevel}
+          setFadeDungeonOut={setFadeDungeonOut}
+          setInBattle={setInBattle}
+          setShowDungeon={setShowDungeon}
+          fadeDungeonOut={fadeDungeonOut}
+          coinCount={coinCount}
+          showBackpack={showBackpack}
+          setShowBackpack={setShowBackpack}
+          playerBackpack={playerBackpack}
+        />
+      ) : (
+        <>
+        <div className={`rps-screen ${weirdMode ? 'weird' : ''}`}>
+          <h1 className="title">Rock Paper Scissor</h1>
+          <div className="choices">
+            {choices.map(choice => (
+              <button
+                key={choice}
+                onClick={() => {
+                  if (!dialogVisible) playGame(choice); 
+                }}
+                className="choice-button"
+                disabled={dialogVisible}
+              >
+                {choice}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ marginTop: '1rem' }}>
+            <button
+              className="continue-button"
+              onClick={skipIntro}
+              disabled={dialogVisible}
+            >
+              Skip Intro →
+            </button>
+          </div>
+
+          <div className="results">
+            <p>You chose: {playerChoice}</p>
+            <p>Computer chose: {computerChoice}</p>
+            <h2>{result}</h2>
+            <p>Game #: {gameCount}</p>
+          </div>
+{chestVisible && (
+  <img
+    src={`${process.env.PUBLIC_URL}/Sprites/Rewards/chest.png`}
+    alt="Reward Chest"
+    className="chest"
+    onClick={() => {
+      const rewards = getRewardsForTile(currentTile);
+
+    if (rewards.includes('Rock')) {
+      setDialogName('You');
+      setDialogText('A rock paper scissor card? Wha-');
+      setDialogVisible(true);
+      setShowRewards(true);
+    } else {
+      setShowRewards(true);
+      setSpecialChestFlow(true);
+      setSpecialChestStep(1);
+      setDialogVisible(true);
+    }
+
+      setShowRewards(true);
+    }}
+  />
+)}
+
+          </div>
+        </>
+      )}
+    </div>
+      </>
+  );
+}
+
+const choices = ['Rock', 'Paper', 'Scissor'];
+
+export default App;
+===
+
+function handleCardClick(i) {
+  if (phase !== 'highlight') return;
+
+  const hasTotem = playerBackpack.includes("Severing Hand Totem");
+  const firstIndex = selectedSwapIndexes[0];
+
+  if (webbedCards.some(w => w.index === i)) {
+    setSelectedSwapIndexes([]);
+    return;
+  }
+
+  if (selectedSwapIndexes.length === 0) {
+    setSelectedSwapIndexes([i]);
+    return;
+  }
+
+  const firstCard = playerPlayed[firstIndex];
+  const secondCard = playerPlayed[i];
+
+  const canSwapWithBlank =
+    hasTotem && (
+      (firstCard != null && secondCard == null) ||
+      (firstCard == null && secondCard != null)
+    );
+
+  const isRegularSwap = firstCard != null && secondCard != null;
+
+  if (canSwapWithBlank || isRegularSwap) {
+    const newOrder = [...playerPlayed];
+    [newOrder[firstIndex], newOrder[i]] = [newOrder[i], newOrder[firstIndex]];
+    setPlayerPlayed(newOrder);
+  }
+
+  setSelectedSwapIndexes([]);
+}

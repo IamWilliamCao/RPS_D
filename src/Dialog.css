@@ -1,0 +1,148 @@
+* {
+  user-select: none;
+}
+
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: transparent;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 2rem;
+  box-sizing: border-box;
+  pointer-events: auto; /* Let only dialog-box receive input */
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.dialog-box {
+  background: rgba(255, 255, 255, 0.95);
+  border: 2px solid black;
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+  max-width: 600px;
+  width: 100%;
+  text-align: left;
+  animation: bounce-in 0.4s ease-out;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.25);
+  pointer-events: auto; /* Enable click inside box */
+  cursor: pointer;
+}
+
+.dialog-name {
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.dialog-text {
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.press-any-key {
+  font-size: 0.8rem;
+  color: #444;
+  margin-top: 1rem;
+  text-align: center;
+  animation: bounce 1s infinite;
+}
+
+@keyframes bounce-in {
+  0% {
+    transform: translateY(100%) scale(0.95);
+    opacity: 0;
+  }
+  50% {
+    transform: translateY(-10%) scale(1.05);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(0%) scale(0.98);
+  }
+  100% {
+    transform: translateY(0%) scale(1);
+  }
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(8px);
+  }
+  50% {
+    transform: translateY(12px);
+  }
+}
+
+.bounce-out {
+  animation: bounce-out 0.4s ease-in forwards;
+}
+
+@keyframes bounce-out {
+  0% {
+    transform: translateY(0%) scale(1);
+    opacity: 1;
+  }
+  30% {
+    transform: translateY(-4%) scale(1.05);
+  }
+  60% {
+    transform: translateY(100%) scale(0.95);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(150%) scale(0.8);
+    opacity: 0;
+  }
+}
+
+@keyframes shock-in {
+  0% {
+    transform: translateY(50%) scale(0.8) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    transform: translateY(0%) scale(1.2) rotate(5deg);
+    opacity: 1;
+  }
+  40% {
+    transform: translateY(0%) scale(1) rotate(-5deg);
+  }
+  60% {
+    transform: translateY(0%) scale(1.1) rotate(2.5deg);
+  }
+  80% {
+    transform: translateY(0%) scale(1) rotate(-2.5deg);
+  }
+  100% {
+    transform: translateY(0%) scale(1) rotate(0deg);
+  }
+}
+
+.shock-in {
+  animation: shock-in 0.5s ease forwards;
+}
+
+.dialog-box {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.you-dialog {
+  background-color: white;
+  color: black;
+}
+
+.righ-dialog {
+  background-color: #d2c7eb;
+  color: #222;
+}
+
+.goblin-dialog {
+  background-color: #e8ffe8;
+  color: #174117;
+}
+

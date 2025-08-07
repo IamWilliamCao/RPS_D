@@ -1,0 +1,159 @@
+* {
+  user-select: none;
+}
+
+@keyframes enemyJump {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-15px);
+  }
+}
+
+.enemyJump {
+  animation-name: enemyJump;
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: forwards;
+  animation-duration: 0.2s;
+}
+
+.enemyFlip {
+  transform: scaleX(-1);
+  transition: none;
+}
+
+@keyframes enemyBig {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+.enemyBig {
+  animation-name: enemyBig;
+  animation-timing-function: ease-in-out;
+  animation-fill-mode: forwards;
+  animation-duration: 1s;
+}
+
+@keyframes damageHit {
+  0% {
+    transform: translateX(0);
+    filter: none;
+  }
+  20% {
+    transform: translateX(-5px);
+    filter: brightness(1.5);
+  }
+  40% {
+    transform: translateX(5px);
+    filter: brightness(1.5);
+  }
+  60% {
+    transform: translateX(-5px);
+    filter: brightness(1.5);
+  }
+  80% {
+    transform: translateX(5px);
+    filter: brightness(1.5);
+  }
+  100% {
+    transform: translateX(0);
+    filter: none;
+  }
+}
+
+.enemy-hit {
+  animation: damageHit 0.4s ease;
+}
+
+@keyframes enemyFadeOut {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+.fade-out {
+  animation: enemyFadeOut 0.4s ease forwards;
+  pointer-events: none;
+}
+
+.invisible-after {
+  height: 0 !important;
+  overflow: hidden;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0;
+  transition: height 0.2s ease;
+}
+
+.enemy-heal {
+  animation: enemyHeal 0.6s ease-out;
+}
+
+@keyframes enemyHeal {
+  0% {
+    box-shadow: 0 0 10px 4px lime;
+    transform: scale(1.1);
+  }
+  100% {
+    box-shadow: 0 0 0 0 lime;
+    transform: scale(1);
+  }
+}
+
+@keyframes waveEntry {
+  from {
+    transform: translateY(-200px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.wave-in {
+  animation: waveEntry 0.8s ease-out;
+}
+
+.tank-glow {
+  box-shadow: 0 0 10px 4px crimson;
+  border-radius: 12px;
+  animation: pulseTank 1s infinite alternate;
+}
+
+@keyframes pulseTank {
+  from {
+    box-shadow: 0 0 10px 4px crimson;
+  }
+  to {
+    box-shadow: 0 0 20px 8px red;
+  }
+}
+
+.enemy-immortal-glow {
+  box-shadow: 0 0 15px 5px rgba(0, 255, 255, 0.7);
+  border-radius: 12px;
+  animation: pulse-glow 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-glow {
+  0% {
+    box-shadow: 0 0 10px 3px rgba(0, 255, 255, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 18px 7px rgba(0, 255, 255, 0.8);
+  }
+  100% {
+    box-shadow: 0 0 10px 3px rgba(0, 255, 255, 0.4);
+  }
+}
