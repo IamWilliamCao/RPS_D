@@ -1,0 +1,33 @@
+{
+  "files": {
+    "main.css": "/RPS_D/static/css/main.b61dcb49.css",
+    "main.js": "/RPS_D/static/js/main.2bb50f65.js",
+    "static/js/453.96453769.chunk.js": "/RPS_D/static/js/453.96453769.chunk.js",
+    "static/media/web1.png": "/RPS_D/static/media/web1.0a38d4e7e7abfd7a9414.png",
+    "static/media/web2.png": "/RPS_D/static/media/web2.65c900777c2fd1ee062f.png",
+    "static/media/stalagtite2.png": "/RPS_D/static/media/stalagtite2.43fcea9bd2c51428ac74.png",
+    "static/media/question.png": "/RPS_D/static/media/question.b1168df742cd0eb053b7.png",
+    "static/media/high-grass.png": "/RPS_D/static/media/high-grass.b4630914b5d0d342408a.png",
+    "static/media/grass.png": "/RPS_D/static/media/grass.4032ca589b8d78ea71bc.png",
+    "static/media/gateway.png": "/RPS_D/static/media/gateway.aea3bf65febe2ea7e567.png",
+    "static/media/crypt-entrance.png": "/RPS_D/static/media/crypt-entrance.f0fa0bc3f5e85783a054.png",
+    "static/media/stalagtite.png": "/RPS_D/static/media/stalagtite.3090aecd58030952e4d2.png",
+    "static/media/pine-tree.png": "/RPS_D/static/media/pine-tree.f1d87638ff278373239b.png",
+    "static/media/wood-cabin.png": "/RPS_D/static/media/wood-cabin.b9d6f8b89b970d4a3f73.png",
+    "static/media/caveRock.png": "/RPS_D/static/media/caveRock.5a8a9e15054ba1a1489a.png",
+    "static/media/medieval-barracks.png": "/RPS_D/static/media/medieval-barracks.9ffb2fc05f59ba2b859e.png",
+    "static/media/Knight.otf": "/RPS_D/static/media/Knight.979de778d0ee610d4723.otf",
+    "static/media/village.png": "/RPS_D/static/media/village.4c58575367076edc8604.png",
+    "static/media/camping-tent.png": "/RPS_D/static/media/camping-tent.d03b0a6936cbda3db122.png",
+    "static/media/cloud2.png": "/RPS_D/static/media/cloud2.bd7efc34d1a7c003dd02.png",
+    "static/media/barracks-tent.png": "/RPS_D/static/media/barracks-tent.38500d74750e0c50acd3.png",
+    "index.html": "/RPS_D/index.html",
+    "main.b61dcb49.css.map": "/RPS_D/static/css/main.b61dcb49.css.map",
+    "main.2bb50f65.js.map": "/RPS_D/static/js/main.2bb50f65.js.map",
+    "453.96453769.chunk.js.map": "/RPS_D/static/js/453.96453769.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.b61dcb49.css",
+    "static/js/main.2bb50f65.js"
+  ]
+}
