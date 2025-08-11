@@ -19,7 +19,7 @@ export function handleSpecialChestFlow({
       setDialogText("Hello?! Earth to you... any brain activity in there or are you just running on idle all day?");
       setDialogVisible(true);
       setSpecialChestStep(2);
-    }, 500);
+    }, 5000);
   } else if (specialChestStep === 2) {
     setDialogVisible(false);
     setTimeout(() => {
@@ -28,7 +28,7 @@ export function handleSpecialChestFlow({
       setDialogText('HEY WAKE UP!');
       setDialogVisible(true);
       setSpecialChestStep(3);
-    }, 500);
+    }, 5000);
   } else if (specialChestStep === 3) {
     setDialogVisible(false);
     setShowDungeon(true);
